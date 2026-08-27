@@ -31,12 +31,13 @@
 
 - [ ] T012 Implement the Glue ETL job in `src/glue/transform_repo_data.py` to read raw JSON, validate schema, write Parquet to the processed bucket, and update the data quality state
 - [ ] T013 Register the processed Parquet dataset in the Glue Data Catalog and validate Athena-compatible table structure for analytics queries
+- [ ] T013a Write unit tests for the Glue transformation/normalization logic and a smoke test that validates an Athena query against a sample processed table in `src/tests/integration/`
 
 ## Phase 6: Analytics, Observability, and Validation
 
 - [ ] T014 Create Athena query validation examples for stars, forks, languages, update recency, and language counts using the Glue Catalog table
 - [ ] T015 Configure CloudWatch logging and basic metrics for Lambda, Glue, SQS queue health, and DLQ accumulation
-- [ ] T016 Perform reliability testing by simulating transient failures and verifying retry and DLQ behavior
+- [ ] T016 Perform reliability testing by (a) temporarily revoking Glue's S3 read permission on a raw object to simulate a transient failure and confirm SQS retry behavior, and (b) uploading a malformed/incomplete raw JSON file to confirm it fails validation and lands in the DLQ after retries are exhausted
 - [ ] T017 Run end-to-end validation to confirm the full pipeline from GitHub API through Athena works within the project’s OJT scope
 
 ## Dependencies and Execution Order

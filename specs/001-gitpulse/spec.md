@@ -153,3 +153,4 @@ As a platform engineer, I want the pipeline to run with least-privilege permissi
 - S3 raw events trigger the processing workflow through EventBridge/SQS rather than directly invoking Glue so that the queue acts as the reliability and decoupling layer.
 - The project scope includes a single data lake pattern with raw and processed layers, not a multi-region or multi-account design.
 - The processed dataset is meant for simple repository analytics and does not require ML, complex feature engineering, or user-facing dashboards.
+- Unauthenticated GitHub REST API access is capped at 60 requests/hour, which is sufficient for the small, fixed repository target list in this project's scope. If the target list grows or ingestion frequency increases, a token-based setup via SSM Parameter Store will be used instead.

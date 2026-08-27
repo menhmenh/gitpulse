@@ -28,6 +28,18 @@ GitPulse is a compact AWS-native data pipeline that ingests public GitHub reposi
 
 **Scale/Scope**: OJT demo with fixed repository targets and a minimal data lake, not a broad multi-tenant or multi-account deployment
 
+The list of repositories to ingest is defined in `terraform/variables.tf` as a
+Terraform variable (e.g. `repo_targets = ["owner/repo1", "owner/repo2", ...]`)
+and passed to the Lambda as an environment variable at deploy time. This keeps
+the target list version-controlled and reproducible via Terraform rather than
+hardcoded in the Lambda source.
+
+variable "repo_targets" {
+  description = "List of GitHub repositories (owner/repo) to ingest"
+  type        = list(string)
+  default     = ["torvalds/linux", "python/cpython"]  # example
+}
+
 ## Constitution Check
 
 *GATE: Must pass before implementation. The proposed design complies with the GitPulse constitution by preserving least-privilege access, explicit reliability and DLQ handling, CloudWatch visibility, Terraform reproducibility, and a deliberately small scope.*
@@ -154,7 +166,8 @@ The reliability flow is central to the design and must not be treated as a gener
 - Persist raw JSON for every successful ingest so the original payload remains available for reprocessing.
 - Ensure processed Parquet rows are consistent and conform to a normalized schema before catalog registration.
 - Record malformed responses with metadata to support root-cause analysis without silently discarding information.
-
+- Processed Parquet output is partitioned by ingestion date(`processed/year=YYYY/month=MM/day=DD/`) so Athena queries can prune partitions and the Glue Catalog table stays performant as data accumulates.
+- Raw objects use a deterministic key pattern: `raw/{repo_owner}/{repo_name}/{ingestion_date}/{run_id}.json` — this ensures distinct keys per ingestion event (no overwrites, per FR-002) and makes DLQ investigation traceable back to the exact run (per RR-003/RR-004).
 ## Athena Evaluation and Example Queries
 
 The project will validate the output with simple Athena queries that demonstrate the expected analytics layer, including:
