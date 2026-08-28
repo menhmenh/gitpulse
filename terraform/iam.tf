@@ -78,8 +78,8 @@ resource "aws_iam_role_policy" "github_ingestion_lambda_kms" {
         Effect = "Allow"
 
         Action = [
-          "kms:Encrypt",
-          "kms:GenerateDataKey"
+          "kms:GenerateDataKey",
+          "kms:Decrypt"
         ]
 
         Resource = aws_kms_key.data_lake.arn
