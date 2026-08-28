@@ -1,11 +1,11 @@
-output "data_lake_bucket_name" {
-  description = "GitPulse S3 data lake bucket name"
-  value       = aws_s3_bucket.data_lake.bucket
+output "s3_bucket_names" {
+  description = "GitPulse S3 bucket names by zone (raw, processed, athena_results)"
+  value       = { for k, b in aws_s3_bucket.this : k => b.bucket }
 }
 
-output "data_lake_bucket_arn" {
-  description = "GitPulse S3 data lake bucket ARN"
-  value       = aws_s3_bucket.data_lake.arn
+output "s3_bucket_arns" {
+  description = "GitPulse S3 bucket ARNs by zone (raw, processed, athena_results)"
+  value       = { for k, b in aws_s3_bucket.this : k => b.arn }
 }
 
 output "github_ingestion_lambda_role_arn" {

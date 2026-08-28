@@ -60,7 +60,7 @@ resource "aws_iam_role_policy" "github_ingestion_lambda_s3" {
           "s3:PutObject"
         ]
 
-        Resource = "${aws_s3_bucket.data_lake.arn}/raw/github/*"
+        Resource = "${aws_s3_bucket.this["raw"].arn}/raw/github/*"
       }
     ]
   })
