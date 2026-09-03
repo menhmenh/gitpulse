@@ -73,6 +73,20 @@ resource "aws_iam_role_policy" "producer_lambda_sqs" {
   })
 }
 
+resource "aws_iam_role_policy" "producer_lambda_kms" {
+  name = "${var.project_name}-producer-lambda-kms"
+  role = aws_iam_role.producer_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["kms:GenerateDataKey"]
+      Resource = aws_kms_key.data_lake.arn
+    }]
+  })
+}
+
 ############################################
 # 2. Ingestion Lambda role
 # SQS-triggered; writes raw JSON to S3; reads GitHub token from Secrets Manager.
