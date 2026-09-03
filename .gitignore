@@ -18,6 +18,10 @@ __pycache__/
 data/raw/
 data/processed/
 
+#Lambda
+.build/
+*.zip
+
 # IDE
 .vscode/
 .idea/

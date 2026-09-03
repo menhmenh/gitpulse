@@ -21,3 +21,9 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+variable "github_repos" {
+  description = "Target GitHub repos to ingest, as 'owner/repo' strings"
+  type        = list(string)
+  default     = ["apache/airflow"]
+}
