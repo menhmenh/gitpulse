@@ -8,12 +8,12 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.region
 
-  producer_lambda_name  = "${var.project_name}-producer"
-  ingestion_lambda_name = "${var.project_name}-github-ingestion"
-  job_queue_name        = "${var.project_name}-job-queue"
-  github_secret_prefix  = "${var.project_name}/github-token"
-  glue_database_name    = var.project_name
-  glue_raw_crawler_name = "${var.project_name}-raw-crawler"
+  producer_lambda_name   = "${var.project_name}-producer"
+  ingestion_lambda_name  = "${var.project_name}-github-ingestion"
+  job_queue_name         = "${var.project_name}-job-queue"
+  github_secret_prefix   = "${var.project_name}/github-token"
+  glue_database_name     = var.project_name
+  glue_raw_crawler_name  = "${var.project_name}-raw-crawler"
   glue_proc_crawler_name = "${var.project_name}-processed-crawler"
   glue_job_name          = "${var.project_name}-transform-job"
   athena_workgroup_name  = "${var.project_name}-workgroup"
