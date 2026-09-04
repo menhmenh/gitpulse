@@ -13,10 +13,18 @@ SECRET_ARN = os.environ["GITHUB_SECRET_ARN"]
 
 _s3 = boto3.client("s3")
 _sm = boto3.client("secretsmanager")
-_token_cache = None  
+_token_cache = None  # cached across warm invocations, refetched on cold start
 
 GITHUB_API = "https://api.github.com"
 
+# FR-1 / resource_type -> endpoint config
+#   since_server        : GitHub API accepts a `since` query param natively
+#   client_filter_field : field to compare against `since` client-side when
+#                         the API has no server-side `since` support. Items
+#                         are fetched newest-first, so pagination stops as
+#                         soon as an older-than-`since` item is seen — this
+#                         avoids a true full re-pull on incremental runs.
+#   sort_param          : extra query string to force newest-first ordering
 RESOURCE_CONFIG = {
     "repository": {
         "path": "/repos/{repo}", "since_server": False, "paginated": False,
@@ -36,10 +44,16 @@ RESOURCE_CONFIG = {
     },
     "releases": {
         "path": "/repos/{repo}/releases", "since_server": False, "paginated": True,
+        # GitHub returns releases newest-created-first by default.
         "client_filter_field": "published_at", "sort_param": "",
     },
     "contributors": {
         "path": "/repos/{repo}/contributors", "since_server": False, "paginated": True,
+        # No per-item timestamp exists on this endpoint (it's aggregated
+        # contribution counts, not events) — incremental filtering is not
+        # possible here by design. Always a full pull; volume is small
+        # (max ~1 contributor per commit author) so this is an accepted,
+        # permanent limitation rather than a bug to fix later.
         "client_filter_field": None, "sort_param": "",
     },
 }
@@ -84,6 +98,8 @@ def call_github(url: str, token: str, retries: int = 3):
                 link_header = resp.headers.get("Link", "")
                 return json.loads(body), link_header
         except urllib.error.HTTPError as e:
+            # Secondary rate limit / abuse detection -> back off and retry within
+            # this invocation; if still failing, raise so SQS retries the message.
             if e.code in (403, 429) and attempt < retries:
                 wait = int(e.headers.get("Retry-After", 2 ** attempt))
                 print(json.dumps({"event": "github_rate_limited", "wait_seconds": wait, "attempt": attempt}))
@@ -122,7 +138,7 @@ def fetch_pages(repo: str, resource_type: str, since: str, token: str):
                     filtered.append(item)
                 else:
                     hit_older = True
-                    break  
+                    break  # newest-first: everything after this is older too
             pages.append(filtered)
             if hit_older:
                 break
@@ -138,17 +154,40 @@ def fetch_pages(repo: str, resource_type: str, since: str, token: str):
 
 def write_raw_pages(repo: str, resource_type: str, pages: list, run_ts: str):
     """FR-10/FR-11: verbatim JSON to S3, deterministic idempotent key —
-    retried runs overwrite the same object instead of duplicating."""
+    retried runs overwrite the same object instead of duplicating.
+
+    S3 has no native multi-object transaction, so a mid-loop put_object
+    failure is handled with a compensating rollback: delete every page
+    already written for this job before re-raising, so the failure leaves
+    zero objects under this key prefix (true "no partial write"), not just
+    an eventually-consistent one after the next successful retry."""
     safe_repo = repo.replace("/", "_")
-    for i, page in enumerate(pages):
-        key = f"raw/github/{resource_type}/{safe_repo}/run_ts={run_ts}/page_{i}.json"
-        _s3.put_object(
-            Bucket=RAW_BUCKET,
-            Key=key,
-            Body=json.dumps(page).encode("utf-8"),
-            ContentType="application/json",
-        )
-    return len(pages)
+    prefix = f"raw/github/{resource_type}/{safe_repo}/run_ts={run_ts}/"
+    written_keys = []
+    try:
+        for i, page in enumerate(pages):
+            key = f"{prefix}page_{i}.json"
+            _s3.put_object(
+                Bucket=RAW_BUCKET,
+                Key=key,
+                Body=json.dumps(page).encode("utf-8"),
+                ContentType="application/json",
+            )
+            written_keys.append(key)
+    except Exception:
+        for key in written_keys:
+            try:
+                _s3.delete_object(Bucket=RAW_BUCKET, Key=key)
+            except Exception as cleanup_err:
+                # Rollback itself failed — log loudly so this is visible in
+                # CloudWatch even though the original exception still wins.
+                print(json.dumps({
+                    "event": "rollback_cleanup_failed",
+                    "key": key,
+                    "error": str(cleanup_err),
+                }))
+        raise
+    return len(written_keys)
 
 
 def handler(event, context):
@@ -160,6 +199,9 @@ def handler(event, context):
         repo = body["repo"]
         resource_type = body["resource_type"]
         since = body.get("since", "")
+        # run_ts comes from the Producer batch, NOT generated here — this is
+        # what makes a retried message overwrite the same S3 key (FR-11)
+        # instead of drifting to a new run_ts on every retry attempt.
         run_ts = body["run_ts"]
 
         if resource_type not in RESOURCE_CONFIG:
@@ -174,7 +216,8 @@ def handler(event, context):
             "run_ts": run_ts,
         }))
 
-        # FR-9: validate responses before writing. If anything below throws.
+        # FR-9: validate responses before writing. If anything below throws,
+        # NO partial data is written and the Lambda exception lets SQS retry.
         pages = fetch_pages(repo, resource_type, since, token)
         page_count = write_raw_pages(repo, resource_type, pages, run_ts)
         record_count = sum(len(p) if isinstance(p, list) else 1 for p in pages)
@@ -184,7 +227,7 @@ def handler(event, context):
             "repo": repo,
             "resource_type": resource_type,
             "pages_written": page_count,
-            "record_count": record_count, 
+            "record_count": record_count,  # compare across runs to verify incremental delta
             "run_ts": run_ts,
         }))
 

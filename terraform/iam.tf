@@ -123,7 +123,7 @@ resource "aws_iam_role_policy" "github_ingestion_lambda_s3" {
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = ["s3:PutObject"]
+      Action   = ["s3:PutObject", "s3:DeleteObject"] # DeleteObject needed for rollback on partial-write failure
       Resource = "${aws_s3_bucket.this["raw"].arn}/raw/github/*"
     }]
   })
