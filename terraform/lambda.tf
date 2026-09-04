@@ -9,7 +9,7 @@ resource "aws_lambda_function" "producer" {
   role          = aws_iam_role.producer_lambda.arn
   handler       = "handler.handler"
   runtime       = "python3.13"
-  timeout       = 30 # lightweight — no API calls, just enumerate & enqueue
+  timeout       = 30
   memory_size   = 128
 
   filename         = data.archive_file.producer.output_path

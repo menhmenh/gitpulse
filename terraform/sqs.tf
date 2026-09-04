@@ -1,6 +1,4 @@
-############################################
 # Dead Letter Queue
-############################################
 
 resource "aws_sqs_queue" "dlq" {
   name                      = "${var.project_name}-dlq"
@@ -22,9 +20,7 @@ resource "aws_sqs_queue_redrive_allow_policy" "dlq" {
   })
 }
 
-############################################
 # Job Queue (sits in front of the Ingestion Lambda)
-############################################
 
 resource "aws_sqs_queue" "job_queue" {
   name = local.job_queue_name
@@ -46,10 +42,8 @@ resource "aws_sqs_queue" "job_queue" {
   tags = { Name = "GitPulse Job Queue" }
 }
 
-############################################
 # Event source mapping: SQS -> Ingestion Lambda
 # Concurrency capped to protect GitHub's per-token rate limit (NFR-4)
-############################################
 
 resource "aws_lambda_event_source_mapping" "ingestion" {
   event_source_arn = aws_sqs_queue.job_queue.arn

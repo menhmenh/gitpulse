@@ -8,9 +8,9 @@ resource "aws_secretsmanager_secret" "github_token" {
   }
 }
 
-# Value is set OUTSIDE Terraform (never committed) — see README.
+# Value is set OUTSIDE Terraform (never committed)
 # `lifecycle.ignore_changes` stops terraform from ever reverting/overwriting
-# the token you set manually via CLI/console after the secret is created.
+# the token you set manually via CLI/console after the secret is created
 resource "aws_secretsmanager_secret_version" "github_token" {
   secret_id     = aws_secretsmanager_secret.github_token.id
   secret_string = jsonencode({ token = "REPLACE_ME_VIA_CLI" })

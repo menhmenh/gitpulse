@@ -1,9 +1,3 @@
-############################################
-# Locals — resource names/ARNs not yet created
-# (SQS, Secrets Manager, Glue, Athena come in later milestones —
-#  names below must match exactly when those resources are added)
-############################################
-
 locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.region
@@ -20,11 +14,9 @@ locals {
 
   sqs_job_queue_arn = "arn:aws:sqs:${local.region}:${local.account_id}:${local.job_queue_name}"
 }
-
-############################################
 # 1. Producer Lambda role
-# Enumerates work, enqueues SQS messages only — no S3/API access.
-############################################
+# Enumerates work, enqueues SQS messages only, no S3/API access.
+
 
 resource "aws_iam_role" "producer_lambda" {
   name = "${var.project_name}-producer-lambda-role"
@@ -87,10 +79,8 @@ resource "aws_iam_role_policy" "producer_lambda_kms" {
   })
 }
 
-############################################
 # 2. Ingestion Lambda role
 # SQS-triggered; writes raw JSON to S3; reads GitHub token from Secrets Manager.
-############################################
 
 resource "aws_iam_role" "github_ingestion_lambda" {
   name = "${var.project_name}-github-ingestion-lambda-role"
@@ -185,10 +175,8 @@ resource "aws_iam_role_policy" "github_ingestion_lambda_secrets" {
   })
 }
 
-############################################
 # 3. Glue Crawler role
 # Reads raw & processed zones, registers schema in the Data Catalog only.
-############################################
 
 resource "aws_iam_role" "glue_crawler" {
   name = "${var.project_name}-glue-crawler-role"
@@ -278,10 +266,8 @@ resource "aws_iam_role_policy" "glue_crawler_catalog" {
   })
 }
 
-############################################
 # 4. Glue Python Shell job role
 # Reads raw, writes processed (Parquet), updates catalog.
-############################################
 
 resource "aws_iam_role" "glue_job" {
   name = "${var.project_name}-glue-job-role"
@@ -372,10 +358,8 @@ resource "aws_iam_role_policy" "glue_job_catalog" {
   })
 }
 
-############################################
 # 5. EventBridge Scheduler role
 # Only allowed to invoke the Producer Lambda on schedule.
-############################################
 
 resource "aws_iam_role" "eventbridge_scheduler" {
   name = "${var.project_name}-eventbridge-scheduler-role"
@@ -406,10 +390,8 @@ resource "aws_iam_role_policy" "eventbridge_scheduler_invoke" {
   })
 }
 
-############################################
 # 6. Athena analyst role
 # Assumed by Data Analysts to run queries against the processed zone.
-############################################
 
 resource "aws_iam_role" "athena_analyst" {
   name = "${var.project_name}-athena-analyst-role"

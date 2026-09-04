@@ -25,6 +25,8 @@ def handler(event, context):
     """FR-3: enumerate (repo, resource_type) pairs and enqueue one SQS
     message per unit of work. Never calls the GitHub API."""
     since = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)).isoformat()
+    # One run_ts per batch shared by every message so all resulting raw
+    run_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     sent = 0
     for repo in REPOS:
@@ -33,17 +35,19 @@ def handler(event, context):
                 "repo": repo,
                 "resource_type": resource_type,
                 "since": since,
+                "run_ts": run_ts,
             }
             _sqs.send_message(QueueUrl=QUEUE_URL, MessageBody=json.dumps(message))
             sent += 1
 
-    # Structured log for verification (FR-9 / AC: no GitHub API calls made)
+    # Structured log for verification 
     print(json.dumps({
         "event": "producer_run_complete",
+        "run_ts": run_ts,
         "repos": len(REPOS),
         "resource_types": len(RESOURCE_TYPES),
         "messages_enqueued": sent,
         "github_api_calls": 0,
     }))
 
-    return {"messages_enqueued": sent}
+    return {"messages_enqueued": sent, "run_ts": run_ts}
