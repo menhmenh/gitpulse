@@ -27,3 +27,9 @@ variable "github_repos" {
   type        = list(string)
   default     = ["apache/airflow"]
 }
+
+variable "producer_schedule_expression" {
+  description = "EventBridge Scheduler expression for the Producer Lambda (rate or cron)"
+  type        = string
+  default     = "rate(24 hours)"
+}
