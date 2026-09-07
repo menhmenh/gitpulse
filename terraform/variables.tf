@@ -33,3 +33,9 @@ variable "producer_schedule_expression" {
   type        = string
   default     = "rate(24 hours)"
 }
+
+variable "crawler_schedule_expression" {
+  description = "EventBridge Scheduler expression for the raw-zone Glue Crawler - should run after ingestion is expected to complete"
+  type        = string
+  default     = "cron(0 2 * * ? *)"
+}

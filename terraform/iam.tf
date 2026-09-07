@@ -211,6 +211,7 @@ resource "aws_iam_role_policy" "glue_crawler_logs" {
   })
 }
 
+
 resource "aws_iam_role_policy" "glue_crawler_s3" {
   name = "${var.project_name}-glue-crawler-s3"
   role = aws_iam_role.glue_crawler.id
@@ -222,9 +223,7 @@ resource "aws_iam_role_policy" "glue_crawler_s3" {
       Action = ["s3:GetObject", "s3:ListBucket"]
       Resource = [
         aws_s3_bucket.this["raw"].arn,
-        "${aws_s3_bucket.this["raw"].arn}/*",
-        aws_s3_bucket.this["processed"].arn,
-        "${aws_s3_bucket.this["processed"].arn}/*"
+        "${aws_s3_bucket.this["raw"].arn}/*"
       ]
     }]
   })
@@ -255,7 +254,7 @@ resource "aws_iam_role_policy" "glue_crawler_catalog" {
       Action = [
         "glue:GetDatabase", "glue:CreateDatabase",
         "glue:GetTable", "glue:CreateTable", "glue:UpdateTable",
-        "glue:BatchCreatePartition", "glue:GetPartitions"
+        "glue:BatchCreatePartition", "glue:GetPartitions", "glue:BatchGetPartition"
       ]
       Resource = [
         "arn:aws:glue:${local.region}:${local.account_id}:catalog",
@@ -265,6 +264,7 @@ resource "aws_iam_role_policy" "glue_crawler_catalog" {
     }]
   })
 }
+
 
 # 4. Glue Python Shell job role
 # Reads raw, writes processed (Parquet), updates catalog.
