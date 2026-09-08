@@ -2,7 +2,7 @@
 
 resource "aws_sqs_queue" "dlq" {
   name                      = "${var.project_name}-dlq"
-  message_retention_seconds = 1209600 # 14 days — max, gives time to investigate failures
+  message_retention_seconds = 1209600 # 14 days max, gives time to investigate failures
 
   kms_master_key_id                 = aws_kms_key.data_lake.id
   kms_data_key_reuse_period_seconds = 300
@@ -25,8 +25,6 @@ resource "aws_sqs_queue_redrive_allow_policy" "dlq" {
 resource "aws_sqs_queue" "job_queue" {
   name = local.job_queue_name
 
-  # Must exceed the Ingestion Lambda's timeout (60s, see lambda.tf) so a message
-  # can't reappear and be double-processed while the Lambda is still running.
   visibility_timeout_seconds = 90
 
   message_retention_seconds = 345600 # 4 days
