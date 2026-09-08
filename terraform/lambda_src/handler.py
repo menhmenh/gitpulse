@@ -17,46 +17,50 @@ _token_cache = None  # cached across warm invocations, refetched on cold start
 
 GITHUB_API = "https://api.github.com"
 
-# FR-1 / resource_type -> endpoint config
-#   since_server        : GitHub API accepts a `since` query param natively
-#   client_filter_field : field to compare against `since` client-side when
-#                         the API has no server-side `since` support. Items
-#                         are fetched newest-first, so pagination stops as
-#                         soon as an older-than-`since` item is seen — this
-#                         avoids a true full re-pull on incremental runs.
-#   sort_param          : extra query string to force newest-first ordering
 RESOURCE_CONFIG = {
     "repository": {
         "path": "/repos/{repo}", "since_server": False, "paginated": False,
-        "client_filter_field": None, "sort_param": "",
+        "client_filter_field": None, "sort_param": "", "envelope_key": None,
     },
     "commits": {
         "path": "/repos/{repo}/commits", "since_server": True, "paginated": True,
-        "client_filter_field": None, "sort_param": "",
+        "client_filter_field": None, "sort_param": "", "envelope_key": None,
     },
     "issues": {
         "path": "/repos/{repo}/issues", "since_server": True, "paginated": True,
-        "client_filter_field": None, "sort_param": "&state=all",
+        "client_filter_field": None, "sort_param": "&state=all", "envelope_key": None,
     },
     "pull_requests": {
         "path": "/repos/{repo}/pulls", "since_server": False, "paginated": True,
         "client_filter_field": "updated_at", "sort_param": "&state=all&sort=updated&direction=desc",
+        "envelope_key": None,
     },
     "releases": {
         "path": "/repos/{repo}/releases", "since_server": False, "paginated": True,
         # GitHub returns releases newest-created-first by default.
-        "client_filter_field": "published_at", "sort_param": "",
+        "client_filter_field": "published_at", "sort_param": "", "envelope_key": None,
     },
     "contributors": {
         "path": "/repos/{repo}/contributors", "since_server": False, "paginated": True,
-        # No per-item timestamp exists on this endpoint (it's aggregated
-        # contribution counts, not events) — incremental filtering is not
-        # possible here by design. Always a full pull; volume is small
-        # (max ~1 contributor per commit author) so this is an accepted,
-        # permanent limitation rather than a bug to fix later.
-        "client_filter_field": None, "sort_param": "",
+        "client_filter_field": None, "sort_param": "", "envelope_key": None,
+    },
+    "deployments": {
+        "path": "/repos/{repo}/deployments", "since_server": False, "paginated": True,
+        "client_filter_field": "created_at", "sort_param": "", "envelope_key": None,
+    },
+    "workflow_runs": {
+        "path": "/repos/{repo}/actions/runs", "since_server": False, "paginated": True,
+        "client_filter_field": "created_at", "sort_param": "", "envelope_key": "workflow_runs",
     },
 }
+
+
+def get_items(data, config: dict) -> list:
+    """Extracts the actual item list from a page, handling both bare-list
+    responses and envelope-wrapped ones (e.g. workflow_runs)."""
+    if config.get("envelope_key"):
+        return data.get(config["envelope_key"], []) or []
+    return data if isinstance(data, list) else [data]
 
 
 def get_github_token() -> str:
@@ -130,16 +134,23 @@ def fetch_pages(repo: str, resource_type: str, since: str, token: str):
     while url:
         data, link_header = call_github(url, token)
 
-        if since_dt is not None and isinstance(data, list):
+        if since_dt is not None:
+            items = get_items(data, config)
             filtered, hit_older = [], False
-            for item in data:
+            for item in items:
                 item_dt = datetime.fromisoformat(item[config["client_filter_field"]].replace("Z", "+00:00"))
                 if item_dt >= since_dt:
                     filtered.append(item)
                 else:
                     hit_older = True
                     break  # newest-first: everything after this is older too
-            pages.append(filtered)
+
+            if config.get("envelope_key"):
+                page_out = dict(data)  # preserve other envelope fields (e.g. total_count)
+                page_out[config["envelope_key"]] = filtered
+            else:
+                page_out = filtered
+            pages.append(page_out)
             if hit_older:
                 break
         else:
@@ -153,14 +164,6 @@ def fetch_pages(repo: str, resource_type: str, since: str, token: str):
 
 
 def write_raw_pages(repo: str, resource_type: str, pages: list, run_ts: str):
-    """FR-10/FR-11: verbatim JSON to S3, deterministic idempotent key —
-    retried runs overwrite the same object instead of duplicating.
-
-    S3 has no native multi-object transaction, so a mid-loop put_object
-    failure is handled with a compensating rollback: delete every page
-    already written for this job before re-raising, so the failure leaves
-    zero objects under this key prefix (true "no partial write"), not just
-    an eventually-consistent one after the next successful retry."""
     safe_repo = repo.replace("/", "_")
     prefix = f"raw/github/{resource_type}/{safe_repo}/run_ts={run_ts}/"
     written_keys = []
@@ -220,7 +223,7 @@ def handler(event, context):
         # NO partial data is written and the Lambda exception lets SQS retry.
         pages = fetch_pages(repo, resource_type, since, token)
         page_count = write_raw_pages(repo, resource_type, pages, run_ts)
-        record_count = sum(len(p) if isinstance(p, list) else 1 for p in pages)
+        record_count = sum(len(get_items(p, RESOURCE_CONFIG[resource_type])) for p in pages)
 
         print(json.dumps({
             "event": "ingestion_complete",

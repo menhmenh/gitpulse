@@ -8,7 +8,7 @@ QUEUE_URL = os.environ["JOB_QUEUE_URL"]
 REPOS = [r.strip() for r in os.environ["GITHUB_REPOS"].split(",") if r.strip()]
 LOOKBACK_HOURS = int(os.environ.get("LOOKBACK_HOURS", "24"))
 
-# FR-1: the 6 resource types the system must collect
+# FR-1 (revised, PRD §11.3): the 8 resource types the system must collect
 RESOURCE_TYPES = [
     "repository",
     "commits",
@@ -16,6 +16,8 @@ RESOURCE_TYPES = [
     "pull_requests",
     "releases",
     "contributors",
+    "deployments",
+    "workflow_runs",
 ]
 
 _sqs = boto3.client("sqs")
@@ -25,7 +27,9 @@ def handler(event, context):
     """FR-3: enumerate (repo, resource_type) pairs and enqueue one SQS
     message per unit of work. Never calls the GitHub API."""
     since = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)).isoformat()
-    # One run_ts per batch shared by every message so all resulting raw
+    # One run_ts per batch — shared by every message so all resulting raw
+    # S3 objects land under the same run_ts= folder, and a retried message
+    # overwrites the same key instead of drifting to a new timestamp.
     run_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     sent = 0
@@ -40,7 +44,7 @@ def handler(event, context):
             _sqs.send_message(QueueUrl=QUEUE_URL, MessageBody=json.dumps(message))
             sent += 1
 
-    # Structured log for verification 
+    # Structured log for verification (FR-9 / AC: no GitHub API calls made)
     print(json.dumps({
         "event": "producer_run_complete",
         "run_ts": run_ts,
