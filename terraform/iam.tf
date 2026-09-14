@@ -258,8 +258,8 @@ resource "aws_iam_role_policy" "glue_crawler_catalog" {
       ]
       Resource = [
         "arn:aws:glue:${local.region}:${local.account_id}:catalog",
-        "arn:aws:glue:${local.region}:${local.account_id}:database/${local.glue_database_name}",
-        "arn:aws:glue:${local.region}:${local.account_id}:table/${local.glue_database_name}/*"
+        "arn:aws:glue:${local.region}:${local.account_id}:database/${aws_glue_catalog_database.gitpulse_raw.name}",
+        "arn:aws:glue:${local.region}:${local.account_id}:table/${aws_glue_catalog_database.gitpulse_raw.name}/*"
       ]
     }]
   })
