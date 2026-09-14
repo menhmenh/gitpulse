@@ -252,7 +252,7 @@ resource "aws_iam_role_policy" "glue_crawler_catalog" {
     Statement = [{
       Effect = "Allow"
       Action = [
-        "glue:GetDatabase", "glue:CreateDatabase",
+        "glue:GetDatabase",
         "glue:GetTable", "glue:CreateTable", "glue:UpdateTable",
         "glue:BatchCreatePartition", "glue:GetPartitions", "glue:BatchGetPartition"
       ]
@@ -264,6 +264,7 @@ resource "aws_iam_role_policy" "glue_crawler_catalog" {
     }]
   })
 }
+
 
 
 # 4. Glue Python Shell job role

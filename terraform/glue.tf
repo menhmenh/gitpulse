@@ -1,5 +1,9 @@
 locals {
-  github_resource_types = ["repository", "commits", "issues", "pull_requests", "releases", "contributors"]
+  # FR-1 (revised, PRD §11.3): 8 resource types, including DORA additions.
+  github_resource_types = [
+    "repository", "commits", "issues", "pull_requests", "releases",
+    "contributors", "deployments", "workflow_runs",
+  ]
 }
 
 resource "aws_glue_catalog_database" "gitpulse" {
@@ -11,9 +15,11 @@ resource "aws_glue_crawler" "raw" {
   role          = aws_iam_role.glue_crawler.arn
   database_name = aws_glue_catalog_database.gitpulse.name
 
-  # One explicit target per resource type — avoids Glue's schema-grouping
-  # heuristic merging distinct resource types into a single table, which
-  # happened when a single "raw/github/" root was crawled.
+  # One explicit target per resource type — table boundaries are already
+  # correctly defined by these separate targets, so schema-grouping across
+  # targets must stay OFF (see `configuration` below) or Glue can merge
+  # structurally-similar resource types (e.g. issues + pull_requests share
+  # id/user/state/created_at/updated_at/labels/assignees) into one table.
   dynamic "s3_target" {
     for_each = local.github_resource_types
     content {
@@ -26,11 +32,12 @@ resource "aws_glue_crawler" "raw" {
     delete_behavior = "LOG" # never auto-delete tables — raw history must be preserved (FR-10)
   }
 
+  # NOTE: Grouping.TableGroupingPolicy = "CombineCompatibleSchemas" was
+  # intentionally removed here. It opts INTO cross-target schema merging,
+  # which directly contradicts the per-resource-type explicit s3_targets
+  # above and risked collapsing distinct resource types into fewer tables.
   configuration = jsonencode({
     Version = 1.0
-    Grouping = {
-      TableGroupingPolicy = "CombineCompatibleSchemas"
-    }
     CrawlerOutput = {
       Partitions = { AddOrUpdateBehavior = "InheritFromTable" }
     }
@@ -41,6 +48,13 @@ resource "aws_glue_crawler" "raw" {
 
 ############################################
 # Delay-based trigger: runs after ingestion is expected to complete.
+# KNOWN LIMITATION (flagged in review): Producer uses rate(24 hours) from
+# apply time, while this crawler uses a fixed daily cron — they can drift
+# out of alignment, risking a crawl mid-ingestion. This entire delay-based
+# trigger (schedule + role below) is expected to be REMOVED once the PRD
+# §12 Step Functions task lands (drained-SQS-alarm trigger replaces it).
+# Do not extend this mechanism further — fix the alignment properly only
+# if the SFN task is delayed and this becomes the long-term trigger.
 ############################################
 
 resource "aws_iam_role" "eventbridge_crawler_trigger" {

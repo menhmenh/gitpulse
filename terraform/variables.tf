@@ -29,13 +29,13 @@ variable "github_repos" {
 }
 
 variable "producer_schedule_expression" {
-  description = "EventBridge Scheduler expression for the Producer Lambda (rate or cron)"
+  description = "EventBridge Scheduler expression for the Producer Lambda. Fixed cron (not rate()) so the trigger time is deterministic and alignable with crawler_schedule_expression below — rate() fires relative to apply-time, which drifts unpredictably across environments/redeploys."
   type        = string
-  default     = "rate(24 hours)"
+  default     = "cron(0 0 * * ? *)" 
 }
 
 variable "crawler_schedule_expression" {
-  description = "EventBridge Scheduler expression for the raw-zone Glue Crawler - should run after ingestion is expected to complete"
+  description = "EventBridge Scheduler expression for the raw-zone Glue Crawler. Must be set comfortably after producer_schedule_expression + expected ingestion duration — this is a manually-maintained offset, not computed, since this delay-based trigger is scheduled for removal once the SFN drained-signal task (PRD §12) lands."
   type        = string
-  default     = "cron(0 2 * * ? *)"
+  default     = "cron(0 2 * * ? *)" 
 }
