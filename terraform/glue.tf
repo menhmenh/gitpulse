@@ -69,21 +69,21 @@ resource "aws_iam_role" "eventbridge_crawler_trigger" {
 }
 
 resource "aws_iam_role_policy" "eventbridge_crawler_trigger_start" {
-  name = "${var.project_name}-eventbridge-start-crawler"
+  name = "${var.project_name}-eventbridge-start-transform-tail"
   role = aws_iam_role.eventbridge_crawler_trigger.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = ["glue:StartCrawler"]
-      Resource = aws_glue_crawler.raw.arn
+      Action   = ["states:StartExecution"]
+      Resource = aws_sfn_state_machine.transform_tail.arn
     }]
   })
 }
 
-resource "aws_scheduler_schedule" "raw_crawler" {
-  name       = "${var.project_name}-raw-crawler-schedule"
+resource "aws_scheduler_schedule" "transform_tail" {
+  name       = "${var.project_name}-transform-tail-schedule"
   group_name = "default"
 
   schedule_expression          = var.crawler_schedule_expression
@@ -94,9 +94,9 @@ resource "aws_scheduler_schedule" "raw_crawler" {
   }
 
   target {
-    arn      = "arn:aws:scheduler:::aws-sdk:glue:startCrawler"
+    arn      = "arn:aws:scheduler:::aws-sdk:sfn:startExecution"
     role_arn = aws_iam_role.eventbridge_crawler_trigger.arn
-    input    = jsonencode({ Name = aws_glue_crawler.raw.name })
+    input    = jsonencode({ StateMachineArn = aws_sfn_state_machine.transform_tail.arn })
 
     retry_policy {
       maximum_retry_attempts       = 2
@@ -251,58 +251,4 @@ resource "aws_glue_crawler" "processed" {
   })
 
   tags = { Name = "GitPulse Processed Crawler" }
-}
-
-# Delay-based trigger for the processed crawler. Same temporary caveat.
-
-resource "aws_iam_role" "eventbridge_processed_crawler_trigger" {
-  name = "${var.project_name}-eventbridge-processed-crawler-trigger-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "scheduler.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-
-  tags = { Name = "GitPulse EventBridge Processed Crawler Trigger Role" }
-}
-
-resource "aws_iam_role_policy" "eventbridge_processed_crawler_trigger_start" {
-  name = "${var.project_name}-eventbridge-start-processed-crawler"
-  role = aws_iam_role.eventbridge_processed_crawler_trigger.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["glue:StartCrawler"]
-      Resource = aws_glue_crawler.processed.arn
-    }]
-  })
-}
-
-resource "aws_scheduler_schedule" "processed_crawler" {
-  name       = "${var.project_name}-processed-crawler-schedule"
-  group_name = "default"
-
-  schedule_expression          = var.processed_crawler_schedule_expression
-  schedule_expression_timezone = "UTC"
-
-  flexible_time_window {
-    mode = "OFF"
-  }
-
-  target {
-    arn      = "arn:aws:scheduler:::aws-sdk:glue:startCrawler"
-    role_arn = aws_iam_role.eventbridge_processed_crawler_trigger.arn
-    input    = jsonencode({ Name = aws_glue_crawler.processed.name })
-
-    retry_policy {
-      maximum_retry_attempts       = 2
-      maximum_event_age_in_seconds = 3600
-    }
-  }
 }

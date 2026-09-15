@@ -25,7 +25,7 @@ variable "environment" {
 variable "github_repos" {
   description = "Target GitHub repos to ingest, as 'owner/repo' strings"
   type        = list(string)
-  default     = ["apache/airflow"]
+  default     = ["vercel/next.js"]
 }
 
 variable "producer_schedule_expression" {
@@ -44,4 +44,22 @@ variable "processed_crawler_schedule_expression" {
   description = "EventBridge Scheduler expression for the processed-zone Glue Crawler. Should run after the transform job (gitpulse-transform-job) is expected to complete — see crawler_schedule_expression comment re: temporary delay-based mechanism pending the SFN task (PRD §12)."
   type        = string
   default     = "cron(0 3 * * ? *)"
+}
+
+variable "dora_failure_labels" {
+  description = "FR-31 failure-signal proxy: issue labels treated as an incident/failure"
+  type        = list(string)
+  default     = ["bug", "incident", "hotfix"]
+}
+
+variable "dora_revert_prefixes" {
+  description = "FR-31 failure-signal proxy: merged PR title prefixes treated as a revert/hotfix"
+  type        = list(string)
+  default     = ["revert", "hotfix:"]
+}
+
+variable "dora_prod_environments" {
+  description = "Deployment 'environment' values treated as production for DORA metrics"
+  type        = list(string)
+  default     = ["production", "prod", "release-canary"]
 }
