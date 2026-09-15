@@ -6,13 +6,11 @@ locals {
   ]
 }
 
-############################################
 # Two separate databases — raw and processed tables must NEVER share a
 # (database, table_name) pair, since a Glue table's identity is
 # (database, name), not tied to its S3 Location. Sharing one database
 # would let the raw and processed crawlers overwrite each other's
 # schema/location on every alternating run.
-############################################
 
 resource "aws_glue_catalog_database" "gitpulse_raw" {
   name = "${local.glue_database_name}_raw"
@@ -52,10 +50,8 @@ resource "aws_glue_crawler" "raw" {
   tags = { Name = "GitPulse Raw Crawler" }
 }
 
-############################################
 # Delay-based trigger for the raw crawler.
 # TEMPORARY: superseded by the SFN task (PRD §12) — remove when that lands.
-############################################
 
 resource "aws_iam_role" "eventbridge_crawler_trigger" {
   name = "${var.project_name}-eventbridge-crawler-trigger-role"
@@ -109,9 +105,7 @@ resource "aws_scheduler_schedule" "raw_crawler" {
   }
 }
 
-############################################
 # Glue Python Shell transform job (FR-13/14/15, DORA FR-29 co-deliverable)
-############################################
 
 resource "aws_s3_object" "transform_script" {
   bucket = aws_s3_bucket.this["raw"].id
@@ -130,7 +124,7 @@ resource "aws_glue_job" "transform" {
     python_version  = "3.9"
   }
 
-  max_capacity = 1 # Python Shell, not Spark (NFR-3) — smallest paid DPU tier
+  max_capacity = 1
   glue_version = "3.0"
   timeout      = 30
 
@@ -139,15 +133,16 @@ resource "aws_glue_job" "transform" {
     "--RAW_BUCKET"                       = aws_s3_bucket.this["raw"].bucket
     "--PROCESSED_BUCKET"                 = aws_s3_bucket.this["processed"].bucket
     "--REPOS"                            = join(",", var.github_repos)
+    "--DORA_FAILURE_LABELS"              = join(",", var.dora_failure_labels)
+    "--DORA_REVERT_PREFIXES"             = join(",", var.dora_revert_prefixes)
+    "--DORA_PROD_ENVIRONMENTS"           = join(",", var.dora_prod_environments)
     "--enable-continuous-cloudwatch-log" = "true"
   }
 
   tags = { Name = "GitPulse Transform + DORA Job" }
 }
 
-############################################
 # Processed-zone Crawler (FR-15) — own database, own dedicated IAM role
-############################################
 
 resource "aws_iam_role" "glue_processed_crawler" {
   name = "${var.project_name}-glue-processed-crawler-role"
@@ -258,9 +253,7 @@ resource "aws_glue_crawler" "processed" {
   tags = { Name = "GitPulse Processed Crawler" }
 }
 
-############################################
 # Delay-based trigger for the processed crawler. Same temporary caveat.
-############################################
 
 resource "aws_iam_role" "eventbridge_processed_crawler_trigger" {
   name = "${var.project_name}-eventbridge-processed-crawler-trigger-role"

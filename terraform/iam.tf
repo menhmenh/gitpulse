@@ -352,8 +352,8 @@ resource "aws_iam_role_policy" "glue_job_catalog" {
       ]
       Resource = [
         "arn:aws:glue:${local.region}:${local.account_id}:catalog",
-        "arn:aws:glue:${local.region}:${local.account_id}:database/${local.glue_database_name}",
-        "arn:aws:glue:${local.region}:${local.account_id}:table/${local.glue_database_name}/*"
+        "arn:aws:glue:${local.region}:${local.account_id}:database/${aws_glue_catalog_database.gitpulse_processed.name}",
+        "arn:aws:glue:${local.region}:${local.account_id}:table/${aws_glue_catalog_database.gitpulse_processed.name}/*"
       ]
     }]
   })
@@ -438,8 +438,8 @@ resource "aws_iam_role_policy" "athena_analyst_catalog" {
       Action = ["glue:GetTable", "glue:GetDatabase", "glue:GetPartitions"]
       Resource = [
         "arn:aws:glue:${local.region}:${local.account_id}:catalog",
-        "arn:aws:glue:${local.region}:${local.account_id}:database/${local.glue_database_name}",
-        "arn:aws:glue:${local.region}:${local.account_id}:table/${local.glue_database_name}/*"
+        "arn:aws:glue:${local.region}:${local.account_id}:database/${aws_glue_catalog_database.gitpulse_processed.name}",
+        "arn:aws:glue:${local.region}:${local.account_id}:table/${aws_glue_catalog_database.gitpulse_processed.name}/*"
       ]
     }]
   })
