@@ -1,14 +1,3 @@
-"""
-GitPulse Transform Job (Glue Python Shell, not Spark — NFR-3).
-
-Reads all raw JSON under s3://<raw>/raw/github/<resource>/<repo>/run_ts=*/,
-dedups, types, flattens, and writes date-partitioned Parquet to
-s3://<processed>/<resource>/dt=YYYY-MM-DD/.
-
-Co-deliverable (PRD §11.3 FR-29, §11.2/§11.3 architecture): also builds
-`dora_metrics` from commits/pull_requests/deployments/issues, using the
-FR-31 failure-signal proxy (configurable via Terraform -> job arguments).
-"""
 import io
 import json
 from datetime import datetime, timezone
@@ -165,13 +154,10 @@ def partition_date(df: pd.DataFrame, resource_type: str) -> pd.DataFrame:
 
 
 def write_parquet_partitioned(df: pd.DataFrame, resource_type: str):
-    """FR-14/FR-15: date-partitioned Parquet to the processed zone.
-    Renames _repo -> repo (no leading underscore) so Athena/Glue don't
-    need backtick-quoting on every query."""
     out = df.drop(columns=["_run_ts"], errors="ignore").rename(columns={"_repo": "repo"})
     for dt, group in out.groupby("dt"):
         buf = io.BytesIO()
-        group.to_parquet(buf, engine="pyarrow", index=False)
+        group.drop(columns=["dt"]).to_parquet(buf, engine="pyarrow", index=False)
         buf.seek(0)
         key = f"{resource_type}/dt={dt}/part-{resource_type}-{dt}.parquet"
         _s3.put_object(Bucket=PROCESSED_BUCKET, Key=key, Body=buf.getvalue())
@@ -179,8 +165,6 @@ def write_parquet_partitioned(df: pd.DataFrame, resource_type: str):
 
 
 def transform_resource(resource_type: str) -> pd.DataFrame:
-    """Returns the full in-memory dataframe (still has _repo/_run_ts) for
-    reuse by build_dora_metrics — the Parquet write path renames separately."""
     frames = []
     for repo in REPOS:
         df = load_raw_records(resource_type, repo)
@@ -310,7 +294,7 @@ def write_dora_metrics(df: pd.DataFrame):
         return
     for dt, group in df.groupby("dt"):
         buf = io.BytesIO()
-        group.to_parquet(buf, engine="pyarrow", index=False)
+        group.drop(columns=["dt"]).to_parquet(buf, engine="pyarrow", index=False)
         buf.seek(0)
         key = f"dora_metrics/dt={dt}/part-dora-{dt}.parquet"
         _s3.put_object(Bucket=PROCESSED_BUCKET, Key=key, Body=buf.getvalue())

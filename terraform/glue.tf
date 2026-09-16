@@ -204,28 +204,6 @@ resource "aws_iam_role_policy" "glue_processed_crawler_kms" {
   })
 }
 
-resource "aws_iam_role_policy" "glue_processed_crawler_catalog" {
-  name = "${var.project_name}-glue-processed-crawler-catalog"
-  role = aws_iam_role.glue_processed_crawler.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "glue:GetDatabase",
-        "glue:GetTable", "glue:CreateTable", "glue:UpdateTable",
-        "glue:BatchCreatePartition", "glue:GetPartitions", "glue:BatchGetPartition"
-      ]
-      Resource = [
-        "arn:aws:glue:${local.region}:${local.account_id}:catalog",
-        "arn:aws:glue:${local.region}:${local.account_id}:database/${aws_glue_catalog_database.gitpulse_processed.name}",
-        "arn:aws:glue:${local.region}:${local.account_id}:table/${aws_glue_catalog_database.gitpulse_processed.name}/*"
-      ]
-    }]
-  })
-}
-
 resource "aws_glue_crawler" "processed" {
   name          = local.glue_proc_crawler_name
   role          = aws_iam_role.glue_processed_crawler.arn

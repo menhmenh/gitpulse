@@ -254,7 +254,8 @@ resource "aws_iam_role_policy" "glue_crawler_catalog" {
       Action = [
         "glue:GetDatabase",
         "glue:GetTable", "glue:CreateTable", "glue:UpdateTable",
-        "glue:BatchCreatePartition", "glue:GetPartitions", "glue:BatchGetPartition"
+        "glue:BatchCreatePartition", "glue:GetPartitions", "glue:BatchGetPartition",
+        "glue:GetPartition", "glue:UpdatePartition"
       ]
       Resource = [
         "arn:aws:glue:${local.region}:${local.account_id}:catalog",
@@ -476,6 +477,29 @@ resource "aws_iam_role_policy" "athena_analyst_kms" {
       Effect   = "Allow"
       Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
       Resource = aws_kms_key.data_lake.arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "glue_processed_crawler_catalog" {
+  name = "${var.project_name}-glue-processed-crawler-catalog"
+  role = aws_iam_role.glue_processed_crawler.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "glue:GetDatabase",
+        "glue:GetTable", "glue:CreateTable", "glue:UpdateTable",
+        "glue:BatchCreatePartition", "glue:GetPartitions", "glue:BatchGetPartition",
+        "glue:GetPartition", "glue:UpdatePartition"
+      ]
+      Resource = [
+        "arn:aws:glue:${local.region}:${local.account_id}:catalog",
+        "arn:aws:glue:${local.region}:${local.account_id}:database/${aws_glue_catalog_database.gitpulse_processed.name}",
+        "arn:aws:glue:${local.region}:${local.account_id}:table/${aws_glue_catalog_database.gitpulse_processed.name}/*"
+      ]
     }]
   })
 }
