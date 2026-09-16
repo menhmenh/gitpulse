@@ -47,9 +47,10 @@ variable "processed_crawler_schedule_expression" {
 }
 
 variable "dora_failure_labels" {
-  description = "FR-31 failure-signal proxy: issue labels treated as an incident/failure"
+  description = "FR-31 failure-signal proxy: issue labels (or substrings) treated as an incident/failure"
   type        = list(string)
-  default     = ["bug", "incident", "hotfix"]
+  # Extended default labels to match common GitHub prefix conventions (e.g. template: bug, type: bug, kind/bug)
+  default     = ["bug", "incident", "hotfix", "template: bug", "type: bug", "kind/bug"]
 }
 
 variable "dora_revert_prefixes" {

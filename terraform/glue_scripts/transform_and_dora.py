@@ -243,13 +243,31 @@ def build_dora_metrics(commits_df, prs_df, deployments_df, issues_df) -> pd.Data
     failures = []
     if issues_df is not None and not issues_df.empty and "labels" in issues_df.columns:
         for _, issue in issues_df.iterrows():
-            issue_labels = {l.strip().lower() for l in str(issue.get("labels", "")).split(",") if l.strip()}
-            if issue_labels & FAILURE_LABELS:
-                failures.append({
-                    "_repo": issue["_repo"],
-                    "open_at": issue.get("created_at"),
-                    "closed_at": issue.get("closed_at"),
-                })
+            issue_labels = [l.strip().lower() for l in str(issue.get("labels", "")).split(",") if l.strip()]
+            # =========================================================================
+            # [ROOT CAUSE FIX 1]: Flexible substring/pattern match for issue labels
+            # Previously used exact match `issue_labels & FAILURE_LABELS`, which caused
+            # real-world prefixed labels like 'template: bug', 'type: bug', 'kind/bug'
+            # to be completely ignored. Now checks if any label contains a failure keyword.
+            # =========================================================================
+            is_failure = any(any(fl in lbl for fl in FAILURE_LABELS) for lbl in issue_labels)
+            if is_failure:
+                o_at = pd.to_datetime(issue.get("created_at"), utc=True, errors="coerce")
+                c_at = pd.to_datetime(issue.get("closed_at"), utc=True, errors="coerce")
+                if pd.notna(o_at):
+                    # =========================================================================
+                    # [ROOT CAUSE FIX 2A]: Assign recovery date partition (dt) for Issue
+                    # For closed issues, recovery finishes at closed_at. Assigning dt to
+                    # closed_at (or created_at if still open) correctly aligns recovery
+                    # with deployment date and avoids dropping resolved incidents.
+                    # =========================================================================
+                    res_dt = c_at.strftime("%Y-%m-%d") if pd.notna(c_at) else o_at.strftime("%Y-%m-%d")
+                    failures.append({
+                        "_repo": issue["_repo"],
+                        "open_at": o_at,
+                        "closed_at": c_at,
+                        "dt": res_dt,
+                    })
 
     if prs_df is not None and not prs_df.empty and "title" in prs_df.columns:
         for _, pr in prs_df.iterrows():
@@ -259,27 +277,58 @@ def build_dora_metrics(commits_df, prs_df, deployments_df, issues_df) -> pd.Data
                 # Recovery time = next prod deployment after this revert merged.
                 candidates = dep[(dep["_repo"] == pr["_repo"]) & (dep["created_at"] >= merged_at)]
                 recovery = candidates["created_at"].min() if not candidates.empty else pd.NaT
-                failures.append({"_repo": pr["_repo"], "open_at": merged_at, "closed_at": recovery})
+                # =========================================================================
+                # [ROOT CAUSE FIX 2B]: Align Revert PR recovery date with Deployment date
+                # A revert is recovered when the next prod deployment successfully rolls out.
+                # Assigning dt to the recovery deployment date (recovery.dt) ensures MTTR
+                # and CFR are properly attributed to that deployment, avoiding date mismatch.
+                # =========================================================================
+                res_dt = recovery.strftime("%Y-%m-%d") if pd.notna(recovery) else merged_at.strftime("%Y-%m-%d")
+                failures.append({
+                    "_repo": pr["_repo"],
+                    "open_at": merged_at,
+                    "closed_at": recovery,
+                    "dt": res_dt,
+                })
 
     fail_df = pd.DataFrame(failures)
     if not fail_df.empty:
-        fail_df["open_at"] = pd.to_datetime(fail_df["open_at"], utc=True, errors="coerce")
-        fail_df["closed_at"] = pd.to_datetime(fail_df["closed_at"], utc=True, errors="coerce")
-        fail_df["dt"] = fail_df["open_at"].dt.strftime("%Y-%m-%d")
-
         cfr_counts = fail_df.groupby(["_repo", "dt"]).size().reset_index(name="failure_count")
 
-        fail_df["mttr_minutes"] = (fail_df["closed_at"] - fail_df["open_at"]).dt.total_seconds() / 60
-        mttr_agg = fail_df.groupby(["_repo", "dt"])["mttr_minutes"].mean().reset_index()
+        # =========================================================================
+        # [ROOT CAUSE FIX 3]: Compute MTTR only on valid resolved incidents
+        # Filter failures with non-null closed_at and closed_at >= open_at.
+        # =========================================================================
+        resolved = fail_df[fail_df["closed_at"].notna() & (fail_df["closed_at"] >= fail_df["open_at"])].copy()
+        if not resolved.empty:
+            resolved["mttr_minutes"] = (resolved["closed_at"] - resolved["open_at"]).dt.total_seconds() / 60
+            mttr_agg = resolved.groupby(["_repo", "dt"])["mttr_minutes"].mean().round(2).reset_index()
+        else:
+            mttr_agg = pd.DataFrame(columns=["_repo", "dt", "mttr_minutes"])
     else:
         cfr_counts = pd.DataFrame(columns=["_repo", "dt", "failure_count"])
         mttr_agg = pd.DataFrame(columns=["_repo", "dt", "mttr_minutes"])
 
-    result = deploy_counts.merge(lt_agg, on=["_repo", "environment", "dt"], how="left")
-    result = result.merge(cfr_counts, on=["_repo", "dt"], how="left")
-    result = result.merge(mttr_agg, on=["_repo", "dt"], how="left")
+    # =========================================================================
+    # [ROOT CAUSE FIX 4]: Use Outer Join instead of Left Join
+    # Previously, a left join from deploy_counts discarded any day that had incidents
+    # or MTTR but zero deployments. Outer join preserves both deployment days and incident days.
+    # =========================================================================
+    prod_env = list(PROD_ENVIRONMENTS)[0] if PROD_ENVIRONMENTS else "production"
+    deploy_summary = deploy_counts.merge(lt_agg, on=["_repo", "environment", "dt"], how="outer")
+    failure_summary = cfr_counts.merge(mttr_agg, on=["_repo", "dt"], how="outer")
+
+    result = deploy_summary.merge(failure_summary, on=["_repo", "dt"], how="outer")
+    result["environment"] = result["environment"].fillna(prod_env)
+    result["deploy_count"] = result["deploy_count"].fillna(0).astype(int)
     result["failure_count"] = result["failure_count"].fillna(0)
-    result["change_failure_rate"] = (result["failure_count"] / result["deploy_count"] * 100).round(2)
+
+    # Change Failure Rate (% failed deployments, division-by-zero safe when deploy_count = 0)
+    result["change_failure_rate"] = np.where(
+        result["deploy_count"] > 0,
+        (result["failure_count"] / result["deploy_count"] * 100).round(2),
+        np.nan
+    )
     result = result.rename(columns={"_repo": "repo"})
 
     return result[[
