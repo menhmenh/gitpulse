@@ -253,3 +253,17 @@ resource "aws_sfn_state_machine" "transform_tail" {
 
   tags = { Name = "GitPulse Transform Tail State Machine" }
 }
+
+resource "aws_iam_role_policy" "sfn_transform_tail_kms" {
+  name = "${var.project_name}-sfn-transform-tail-kms"
+  role = aws_iam_role.sfn_transform_tail.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+      Resource = aws_kms_key.data_lake.arn
+    }]
+  })
+}
