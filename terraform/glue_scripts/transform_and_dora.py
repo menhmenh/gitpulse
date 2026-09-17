@@ -58,6 +58,13 @@ ARRAY_FIELD_REDUCERS = {
     "topics": lambda v: ",".join(str(x) for x in v) if isinstance(v, list) else "",
 }
 
+def to_date_str(series: pd.Series) -> pd.Series:
+    """NaT-safe date-string conversion. `.dt.strftime()` raises
+    'ValueError: NaTType does not support strftime' on some pandas
+    versions (seen in Glue Python Shell's analytics library set) when the
+    series contains any NaT. `.dt.date` handles NaT cleanly instead."""
+    return series.dt.date.astype(str).replace("NaT", None)
+
 
 def list_run_objects(resource_type: str, repo: str) -> list:
     safe_repo = repo.replace("/", "_")
@@ -146,7 +153,7 @@ def partition_date(df: pd.DataFrame, resource_type: str) -> pd.DataFrame:
     config = RESOURCE_CONFIG[resource_type]
     date_field = config["date_field"]
     if date_field and date_field in df.columns:
-        df["dt"] = pd.to_datetime(df[date_field], errors="coerce", utc=True).dt.strftime("%Y-%m-%d")
+        df["dt"] = to_date_str(pd.to_datetime(df[date_field], errors="coerce", utc=True))
         df["dt"] = df["dt"].fillna(datetime.now(timezone.utc).strftime("%Y-%m-%d"))
     else:
         df["dt"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -209,7 +216,7 @@ def build_dora_metrics(commits_df, prs_df, deployments_df, issues_df) -> pd.Data
     if dep.empty:
         print(json.dumps({"event": "dora_skip_no_prod_deployments"}))
         return pd.DataFrame()
-    dep["dt"] = dep["created_at"].dt.strftime("%Y-%m-%d")
+    dep["dt"] = to_date_str(dep["created_at"])
 
     # --- Deployment Frequency: deploy_count per repo/environment/dt ---
     deploy_counts = dep.groupby(["_repo", "environment", "dt"]).size().reset_index(name="deploy_count")
@@ -272,7 +279,7 @@ def build_dora_metrics(commits_df, prs_df, deployments_df, issues_df) -> pd.Data
     if prs_df is not None and not prs_df.empty and "title" in prs_df.columns:
         for _, pr in prs_df.iterrows():
             title = str(pr.get("title", "")).strip().lower()
-            if pr.get("merged_at") and title.startswith(REVERT_PREFIXES):
+            if pd.notna(pr.get("merged_at")) and title.startswith(REVERT_PREFIXES):
                 merged_at = pd.to_datetime(pr["merged_at"], utc=True, errors="coerce")
                 # Recovery time = next prod deployment after this revert merged.
                 candidates = dep[(dep["_repo"] == pr["_repo"]) & (dep["created_at"] >= merged_at)]
