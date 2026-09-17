@@ -89,8 +89,8 @@ resource "aws_sfn_state_machine" "transform_tail" {
 
       # --- Stage 1: CrawlRaw (poll-loop, see note above) ---
       CrawlRaw = {
-        Type     = "Task"
-        Resource = "arn:aws:states:::aws-sdk:glue:startCrawler"
+        Type       = "Task"
+        Resource   = "arn:aws:states:::aws-sdk:glue:startCrawler"
         Parameters = { Name = aws_glue_crawler.raw.name }
         Retry = [{
           ErrorEquals     = ["States.ALL"]
@@ -107,8 +107,8 @@ resource "aws_sfn_state_machine" "transform_tail" {
       }
       WaitRaw = { Type = "Wait", Seconds = 30, Next = "GetCrawlRaw" }
       GetCrawlRaw = {
-        Type     = "Task"
-        Resource = "arn:aws:states:::aws-sdk:glue:getCrawler"
+        Type       = "Task"
+        Resource   = "arn:aws:states:::aws-sdk:glue:getCrawler"
         Parameters = { Name = aws_glue_crawler.raw.name }
         Retry = [{
           ErrorEquals     = ["States.ALL"]
@@ -150,8 +150,8 @@ resource "aws_sfn_state_machine" "transform_tail" {
 
       # --- Stage 2: TransformGlueJob (genuine .sync integration) ---
       TransformGlueJob = {
-        Type     = "Task"
-        Resource = "arn:aws:states:::glue:startJobRun.sync"
+        Type       = "Task"
+        Resource   = "arn:aws:states:::glue:startJobRun.sync"
         Parameters = { JobName = aws_glue_job.transform.name }
         Retry = [{
           ErrorEquals     = ["States.ALL"]
@@ -175,8 +175,8 @@ resource "aws_sfn_state_machine" "transform_tail" {
 
       # --- Stage 3: CrawlProcessed (same poll-loop pattern as CrawlRaw) ---
       CrawlProcessed = {
-        Type     = "Task"
-        Resource = "arn:aws:states:::aws-sdk:glue:startCrawler"
+        Type       = "Task"
+        Resource   = "arn:aws:states:::aws-sdk:glue:startCrawler"
         Parameters = { Name = aws_glue_crawler.processed.name }
         Retry = [{
           ErrorEquals     = ["States.ALL"]
@@ -193,8 +193,8 @@ resource "aws_sfn_state_machine" "transform_tail" {
       }
       WaitProcessed = { Type = "Wait", Seconds = 30, Next = "GetCrawlProcessed" }
       GetCrawlProcessed = {
-        Type     = "Task"
-        Resource = "arn:aws:states:::aws-sdk:glue:getCrawler"
+        Type       = "Task"
+        Resource   = "arn:aws:states:::aws-sdk:glue:getCrawler"
         Parameters = { Name = aws_glue_crawler.processed.name }
         Retry = [{
           ErrorEquals     = ["States.ALL"]
@@ -241,9 +241,9 @@ resource "aws_sfn_state_machine" "transform_tail" {
         Type     = "Task"
         Resource = "arn:aws:states:::sns:publish"
         Parameters = {
-          TopicArn = aws_sns_topic.pipeline_alerts.arn
+          TopicArn    = aws_sns_topic.pipeline_alerts.arn
           "Message.$" = "States.Format('GitPulse transform tail failed at stage: {}. Execution: {}', $.failure.FailedStage, $$.Execution.Id)"
-          Subject  = "GitPulse transform tail FAILED"
+          Subject     = "GitPulse transform tail FAILED"
         }
         Next = "PipelineFailed"
       }
