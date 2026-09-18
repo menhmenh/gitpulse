@@ -64,3 +64,9 @@ variable "dora_prod_environments" {
   type        = list(string)
   default     = ["production", "prod", "release-canary"]
 }
+
+variable "athena_bytes_scanned_cutoff_per_query" {
+  description = "Max bytes a single Athena query can scan before being cancelled — cost-control guardrail against unoptimized/unpartitioned queries"
+  type        = number
+  default     = 10737418240 # 10 GB
+}

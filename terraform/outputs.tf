@@ -37,3 +37,8 @@ output "athena_analyst_role_arn" {
   description = "IAM role ARN for Athena analyst access"
   value       = aws_iam_role.athena_analyst.arn
 }
+
+output "athena_workgroup_name" {
+  description = "Athena workgroup name for GitPulse queries"
+  value       = aws_athena_workgroup.gitpulse.name
+}
