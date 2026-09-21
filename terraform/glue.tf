@@ -50,9 +50,6 @@ resource "aws_glue_crawler" "raw" {
   tags = { Name = "GitPulse Raw Crawler" }
 }
 
-# Delay-based trigger for the raw crawler.
-# TEMPORARY: superseded by the SFN task (PRD §12) — remove when that lands.
-
 resource "aws_iam_role" "eventbridge_crawler_trigger" {
   name = "${var.project_name}-eventbridge-crawler-trigger-role"
 
