@@ -50,58 +50,6 @@ resource "aws_glue_crawler" "raw" {
   tags = { Name = "GitPulse Raw Crawler" }
 }
 
-resource "aws_iam_role" "eventbridge_crawler_trigger" {
-  name = "${var.project_name}-eventbridge-crawler-trigger-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "scheduler.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-
-  tags = { Name = "GitPulse EventBridge Crawler Trigger Role" }
-}
-
-resource "aws_iam_role_policy" "eventbridge_crawler_trigger_start" {
-  name = "${var.project_name}-eventbridge-start-transform-tail"
-  role = aws_iam_role.eventbridge_crawler_trigger.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["states:StartExecution"]
-      Resource = aws_sfn_state_machine.transform_tail.arn
-    }]
-  })
-}
-
-resource "aws_scheduler_schedule" "transform_tail" {
-  name       = "${var.project_name}-transform-tail-schedule"
-  group_name = "default"
-
-  schedule_expression          = var.crawler_schedule_expression
-  schedule_expression_timezone = "UTC"
-
-  flexible_time_window {
-    mode = "OFF"
-  }
-
-  target {
-    arn      = "arn:aws:scheduler:::aws-sdk:sfn:startExecution"
-    role_arn = aws_iam_role.eventbridge_crawler_trigger.arn
-    input    = jsonencode({ StateMachineArn = aws_sfn_state_machine.transform_tail.arn })
-
-    retry_policy {
-      maximum_retry_attempts       = 2
-      maximum_event_age_in_seconds = 3600
-    }
-  }
-}
-
 # Glue Python Shell transform job (FR-13/14/15, DORA FR-29 co-deliverable)
 
 resource "aws_s3_object" "transform_script" {

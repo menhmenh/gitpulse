@@ -392,6 +392,38 @@ resource "aws_iam_role_policy" "eventbridge_scheduler_invoke" {
   })
 }
 
+# 5b. EventBridge to Step Functions role
+# Allows EventBridge rules to start execution of the transform-tail state machine.
+
+resource "aws_iam_role" "eventbridge_sfn" {
+  name = "${var.project_name}-eventbridge-sfn-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "events.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = { Name = "GitPulse EventBridge SFN Role" }
+}
+
+resource "aws_iam_role_policy" "eventbridge_sfn_start_execution" {
+  name = "${var.project_name}-eventbridge-start-sfn-execution"
+  role = aws_iam_role.eventbridge_sfn.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["states:StartExecution"]
+      Resource = aws_sfn_state_machine.transform_tail.arn
+    }]
+  })
+}
+
 # 6. Athena analyst role
 # Assumed by Data Analysts to run queries against the processed zone.
 

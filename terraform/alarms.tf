@@ -176,18 +176,46 @@ resource "aws_cloudwatch_metric_alarm" "sfn_transform_tail_failure" {
 
 resource "aws_cloudwatch_metric_alarm" "sqs_drained" {
   alarm_name          = "${var.project_name}-job-queue-drained"
-  alarm_description   = "Job queue is empty (0 visible messages) — candidate trigger signal for the transform tail. NOT WIRED YET: see the SQS-drained-alarm follow-up ticket for the actual EventBridge -> SFN integration."
-  namespace           = "AWS/SQS"
-  metric_name         = "ApproximateNumberOfMessagesVisible"
-  dimensions          = { QueueName = aws_sqs_queue.job_queue.name }
-  statistic           = "Maximum"
-  period              = 60
-  evaluation_periods  = 2 # requires 2 consecutive empty checks to avoid flapping mid-drain
+  alarm_description   = "SQS job queue drained: enters ALARM when messages exist; transitions to OK when ApproximateNumberOfMessagesVisible + ApproximateNumberOfMessagesNotVisible == 0 sustained for ${var.sqs_drained_sustained_minutes} minutes, triggering SFN transform tail (PRD FR-33, Architecture §12.3)."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = var.sqs_drained_sustained_minutes
+  datapoints_to_alarm = 1
   threshold           = 0
-  comparison_operator = "LessThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
 
-  # alarm_actions intentionally omitted 
+  metric_query {
+    id          = "e1"
+    expression  = "m1 + m2"
+    label       = "TotalMessages"
+    return_data = true
+  }
 
-  tags = { Name = "GitPulse Job Queue Drained - stub unwired" }
+  metric_query {
+    id = "m1"
+    metric {
+      metric_name = "ApproximateNumberOfMessagesVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.job_queue.name
+      }
+    }
+  }
+
+  metric_query {
+    id = "m2"
+    metric {
+      metric_name = "ApproximateNumberOfMessagesNotVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.job_queue.name
+      }
+    }
+  }
+
+  tags = { Name = "GitPulse Job Queue Drained" }
 }
+
