@@ -50,7 +50,7 @@ variable "dora_failure_labels" {
   description = "FR-31 failure-signal proxy: issue labels (or substrings) treated as an incident/failure"
   type        = list(string)
   # Extended default labels to match common GitHub prefix conventions (e.g. template: bug, type: bug, kind/bug)
-  default     = ["bug", "incident", "hotfix", "template: bug", "type: bug", "kind/bug"]
+  default = ["bug", "incident", "hotfix", "template: bug", "type: bug", "kind/bug"]
 }
 
 variable "dora_revert_prefixes" {
@@ -70,3 +70,22 @@ variable "athena_bytes_scanned_cutoff_per_query" {
   type        = number
   default     = 10737418240 # 10 GB
 }
+
+variable "sqs_drained_sustained_minutes" {
+  description = "Number of sustained minutes SQS queue messages (visible + not visible) must remain 0 before alarm transitions to OK (PRD FR-33, Architecture §12.3)"
+  type        = number
+  default     = 5
+}
+
+variable "enable_transform_tail_fallback" {
+  description = "Enable time-delayed EventBridge rule fallback for transform tail (Architecture §12.3 / PRD FR-33). Disabled by default in favor of primary SQS drained alarm trigger."
+  type        = bool
+  default     = false
+}
+
+variable "transform_tail_fallback_schedule_expression" {
+  description = "Fallback schedule expression for the transform tail (producer_time + 45min). Used only when enable_transform_tail_fallback is true."
+  type        = string
+  default     = "cron(45 0 * * ? *)"
+}
+

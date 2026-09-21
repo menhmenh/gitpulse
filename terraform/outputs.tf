@@ -42,3 +42,14 @@ output "athena_workgroup_name" {
   description = "Athena workgroup name for GitPulse queries"
   value       = aws_athena_workgroup.gitpulse.name
 }
+
+output "eventbridge_sfn_role_arn" {
+  description = "IAM role ARN for EventBridge to Step Functions execution"
+  value       = aws_iam_role.eventbridge_sfn.arn
+}
+
+output "sqs_drained_alarm_arn" {
+  description = "CloudWatch metric alarm ARN for SQS drained trigger"
+  value       = aws_cloudwatch_metric_alarm.sqs_drained.arn
+}
+
