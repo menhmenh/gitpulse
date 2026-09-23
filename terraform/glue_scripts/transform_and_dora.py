@@ -204,27 +204,37 @@ def transform_resource(resource_type: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def build_dora_metrics(commits_df, prs_df, deployments_df, issues_df) -> pd.DataFrame:
-    if deployments_df is None or deployments_df.empty:
-        print(json.dumps({"event": "dora_skip_no_deployments"}))
+    dfs = [commits_df, prs_df, deployments_df, issues_df]
+    if all(d is None or d.empty for d in dfs):
+        print(json.dumps({"event": "dora_skip_no_data"}))
         return pd.DataFrame()
 
-    dep = deployments_df.copy()
-    dep["environment"] = dep.get("environment", pd.Series(dtype=object)).fillna("production").astype(str)
-    dep["created_at"] = pd.to_datetime(dep["created_at"], utc=True, errors="coerce")
-    # Scope: only production-like environments feed DF/LT/CFR/MTTR.
-    dep = dep[dep["environment"].str.lower().isin(PROD_ENVIRONMENTS)]
-    if dep.empty:
-        print(json.dumps({"event": "dora_skip_no_prod_deployments"}))
-        return pd.DataFrame()
-    dep["dt"] = to_date_str(dep["created_at"])
+    if deployments_df is not None and not deployments_df.empty:
+        dep = deployments_df.copy()
+        if "environment" not in dep.columns:
+            dep["environment"] = "production"
+        else:
+            dep["environment"] = dep["environment"].fillna("production").astype(str)
+        dep["created_at"] = pd.to_datetime(dep["created_at"], utc=True, errors="coerce")
+        # Scope: only production-like environments feed DF/LT/CFR/MTTR.
+        dep = dep[dep["environment"].str.lower().isin(PROD_ENVIRONMENTS)]
+        if not dep.empty:
+            dep["dt"] = to_date_str(dep["created_at"])
+        else:
+            dep["dt"] = pd.Series(dtype=str)
+    else:
+        dep = pd.DataFrame(columns=["_repo", "environment", "created_at", "dt"])
 
     # --- Deployment Frequency: deploy_count per repo/environment/dt ---
-    deploy_counts = dep.groupby(["_repo", "environment", "dt"]).size().reset_index(name="deploy_count")
+    if not dep.empty and "_repo" in dep.columns:
+        deploy_counts = dep.groupby(["_repo", "environment", "dt"]).size().reset_index(name="deploy_count")
+    else:
+        deploy_counts = pd.DataFrame(columns=["_repo", "environment", "dt", "deploy_count"])
 
     # --- Lead Time: deployment.created_at - nearest prior merged PR.merged_at, same repo ---
     # p50/p95 per (repo, environment, dt) as specified.
     lead_times = []
-    if prs_df is not None and not prs_df.empty and "merged_at" in prs_df.columns:
+    if not dep.empty and prs_df is not None and not prs_df.empty and "merged_at" in prs_df.columns:
         merged = prs_df[prs_df["merged_at"].notna()].copy()
         merged["merged_at"] = pd.to_datetime(merged["merged_at"], utc=True, errors="coerce")
         for _, d in dep.iterrows():
@@ -282,7 +292,7 @@ def build_dora_metrics(commits_df, prs_df, deployments_df, issues_df) -> pd.Data
             if pd.notna(pr.get("merged_at")) and title.startswith(REVERT_PREFIXES):
                 merged_at = pd.to_datetime(pr["merged_at"], utc=True, errors="coerce")
                 # Recovery time = next prod deployment after this revert merged.
-                candidates = dep[(dep["_repo"] == pr["_repo"]) & (dep["created_at"] >= merged_at)]
+                candidates = dep[(dep["_repo"] == pr["_repo"]) & (dep["created_at"] >= merged_at)] if not dep.empty else pd.DataFrame()
                 recovery = candidates["created_at"].min() if not candidates.empty else pd.NaT
                 # =========================================================================
                 # [ROOT CAUSE FIX 2B]: Align Revert PR recovery date with Deployment date
@@ -327,8 +337,57 @@ def build_dora_metrics(commits_df, prs_df, deployments_df, issues_df) -> pd.Data
 
     result = deploy_summary.merge(failure_summary, on=["_repo", "dt"], how="outer")
     result["environment"] = result["environment"].fillna(prod_env)
-    result["deploy_count"] = result["deploy_count"].fillna(0).astype(int)
-    result["failure_count"] = result["failure_count"].fillna(0)
+
+    # =========================================================================
+    # [ROOT CAUSE FIX 5]: Date Spine (Calendar Filling)
+    # Ensure that every day within the active evaluation window is represented
+    # in dora_metrics with deploy_count = 0 instead of being omitted.
+    # =========================================================================
+    repos_in_data = set(result["_repo"].dropna()) if ("_repo" in result.columns and not result.empty) else set()
+    all_target_repos = list(set(REPOS) | repos_in_data)
+    if not all_target_repos:
+        all_target_repos = ["unknown"]
+
+    envs_in_data = set(result["environment"].dropna()) if ("environment" in result.columns and not result.empty) else set()
+    target_envs = list(envs_in_data) if envs_in_data else [prod_env]
+
+    candidate_dates = []
+    if not result.empty and "dt" in result.columns:
+        candidate_dates.extend(result["dt"].dropna().tolist())
+    for df_in, col in [(prs_df, "merged_at"), (prs_df, "created_at"), (issues_df, "created_at"), (commits_df, "commit_author_date")]:
+        if df_in is not None and not df_in.empty and col in df_in.columns:
+            candidate_dates.extend(to_date_str(pd.to_datetime(df_in[col], errors="coerce", utc=True)).dropna().tolist())
+
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    valid_dates = [
+        d for d in candidate_dates
+        if isinstance(d, str) and len(d) == 10 and d != "NaT" and d != "None" and d <= today_str
+    ]
+
+    if valid_dates:
+        min_candidate = min(valid_dates)
+        max_candidate = today_str
+        # Cap lookback to reasonable window (e.g. up to 90 days from max_candidate) to avoid thousands of empty partitions
+        lookback_cutoff = (pd.to_datetime(max_candidate) - pd.Timedelta(days=90)).strftime("%Y-%m-%d")
+        start_date = max(min_candidate, lookback_cutoff)
+        end_date = max_candidate
+    else:
+        start_date = today_str
+        end_date = today_str
+
+    date_spine_series = pd.date_range(start=start_date, end=end_date, freq="D").strftime("%Y-%m-%d")
+    spine_records = []
+    for r in all_target_repos:
+        for env in target_envs:
+            for d in date_spine_series:
+                spine_records.append({"_repo": r, "environment": env, "dt": d})
+    spine_df = pd.DataFrame(spine_records)
+
+    result = spine_df.merge(result, on=["_repo", "environment", "dt"], how="outer")
+
+    result["environment"] = result["environment"].fillna(prod_env)
+    result["deploy_count"] = pd.to_numeric(result["deploy_count"], errors="coerce").fillna(0).astype(int)
+    result["failure_count"] = pd.to_numeric(result["failure_count"], errors="coerce").fillna(0)
 
     # Change Failure Rate (% failed deployments, division-by-zero safe when deploy_count = 0)
     result["change_failure_rate"] = np.where(
@@ -341,7 +400,7 @@ def build_dora_metrics(commits_df, prs_df, deployments_df, issues_df) -> pd.Data
     return result[[
         "dt", "repo", "environment", "deploy_count",
         "lead_time_p50", "lead_time_p95", "change_failure_rate", "mttr_minutes",
-    ]]
+    ]].sort_values(["repo", "environment", "dt"]).reset_index(drop=True)
 
 
 def write_dora_metrics(df: pd.DataFrame):
