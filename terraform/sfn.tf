@@ -11,6 +11,51 @@ resource "aws_sns_topic" "pipeline_alerts" {
   tags = { Name = "GitPulse Pipeline Alerts" }
 }
 
+resource "aws_sns_topic_policy" "pipeline_alerts" {
+  arn = aws_sns_topic.pipeline_alerts.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowAccountAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${local.account_id}:root" }
+        Action = [
+          "SNS:GetTopicAttributes",
+          "SNS:SetTopicAttributes",
+          "SNS:AddPermission",
+          "SNS:RemovePermission",
+          "SNS:DeleteTopic",
+          "SNS:Subscribe",
+          "SNS:ListSubscriptionsByTopic",
+          "SNS:Publish"
+        ]
+        Resource = aws_sns_topic.pipeline_alerts.arn
+      },
+      {
+        Sid       = "AllowCloudWatchAlarmsPublish"
+        Effect    = "Allow"
+        Principal = { Service = "cloudwatch.amazonaws.com" }
+        Action    = "sns:Publish"
+        Resource  = aws_sns_topic.pipeline_alerts.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = local.account_id
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_sns_topic_subscription" "pipeline_alerts_email" {
+  count     = var.alert_email != "" ? 1 : 0
+  topic_arn = aws_sns_topic.pipeline_alerts.arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
 ############################################
 # SFN execution role — least-priv per ticket spec: exactly the 4 Glue
 # actions + sns:Publish on the one topic, nothing else.

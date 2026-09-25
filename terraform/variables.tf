@@ -89,3 +89,10 @@ variable "transform_tail_fallback_schedule_expression" {
   default     = "cron(45 0 * * ? *)"
 }
 
+variable "alert_email" {
+  description = "Email address subscribed to the shared pipeline-alerts SNS topic (receives DLQ alarm and Step Functions failure notifications). Set to empty string to skip subscription."
+  type        = string
+  default     = "alerts@example.com"
+}
+
+

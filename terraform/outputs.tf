@@ -53,3 +53,14 @@ output "sqs_drained_alarm_arn" {
   value       = aws_cloudwatch_metric_alarm.sqs_drained.arn
 }
 
+output "pipeline_alerts_sns_topic_arn" {
+  description = "Shared SNS topic ARN for pipeline failure notifications (DLQ alarm + Step Functions FailNotify)"
+  value       = aws_sns_topic.pipeline_alerts.arn
+}
+
+output "dlq_depth_alarm_arn" {
+  description = "CloudWatch metric alarm ARN for DLQ depth > 0"
+  value       = aws_cloudwatch_metric_alarm.dlq_depth.arn
+}
+
+
