@@ -163,7 +163,7 @@ def fetch_pages(repo: str, resource_type: str, since: str, token: str):
     return pages
 
 
-def write_raw_pages(repo: str, resource_type: str, pages: list, run_ts: str):
+def write_raw_pages(repo: str, resource_type: str, pages: list, run_ts: str, simulate_mid_write_failure: bool = False):
     safe_repo = repo.replace("/", "_")
     prefix = f"raw/github/{resource_type}/{safe_repo}/run_ts={run_ts}/"
     written_keys = []
@@ -177,6 +177,8 @@ def write_raw_pages(repo: str, resource_type: str, pages: list, run_ts: str):
                 ContentType="application/json",
             )
             written_keys.append(key)
+            if simulate_mid_write_failure:
+                raise RuntimeError(f"Simulated mid-write failure after writing {key} (testing atomic rollback)")
     except Exception:
         for key in written_keys:
             try:
@@ -206,6 +208,7 @@ def handler(event, context):
         # what makes a retried message overwrite the same S3 key (FR-11)
         # instead of drifting to a new run_ts on every retry attempt.
         run_ts = body["run_ts"]
+        simulate_failure = body.get("simulate_failure", False)
 
         if resource_type not in RESOURCE_CONFIG:
             # Fail loudly rather than silently dropping unknown work.
@@ -217,7 +220,19 @@ def handler(event, context):
             "resource_type": resource_type,
             "since": since,
             "run_ts": run_ts,
+            "simulate_failure": simulate_failure,
         }))
+
+        if simulate_failure == "partial_write_rollback":
+            # Write page_0.json to S3 and immediately fail mid-write to prove
+            # that write_raw_pages rolls back all written keys leaving 0 partial data.
+            write_raw_pages(
+                repo,
+                resource_type,
+                pages=[{"simulated_partial_page": 0}],
+                run_ts=run_ts,
+                simulate_mid_write_failure=True,
+            )
 
         # FR-9: validate responses before writing. If anything below throws,
         # NO partial data is written and the Lambda exception lets SQS retry.

@@ -180,9 +180,21 @@ resource "aws_sfn_state_machine" "transform_tail" {
       CheckRawResult = {
         Type = "Choice"
         Choices = [{
-          Variable     = "$.Crawler.LastCrawl.Status"
-          StringEquals = "SUCCEEDED"
-          Next         = "TransformGlueJob"
+          And = [
+            {
+              Variable  = "$.Crawler.LastCrawl"
+              IsPresent = true
+            },
+            {
+              Variable  = "$.Crawler.LastCrawl.Status"
+              IsPresent = true
+            },
+            {
+              Variable     = "$.Crawler.LastCrawl.Status"
+              StringEquals = "SUCCEEDED"
+            }
+          ]
+          Next = "TransformGlueJob"
         }]
         Default = "NotifyCrawlRawFailed"
       }
@@ -266,9 +278,21 @@ resource "aws_sfn_state_machine" "transform_tail" {
       CheckProcessedResult = {
         Type = "Choice"
         Choices = [{
-          Variable     = "$.Crawler.LastCrawl.Status"
-          StringEquals = "SUCCEEDED"
-          Next         = "PipelineSucceeded"
+          And = [
+            {
+              Variable  = "$.Crawler.LastCrawl"
+              IsPresent = true
+            },
+            {
+              Variable  = "$.Crawler.LastCrawl.Status"
+              IsPresent = true
+            },
+            {
+              Variable     = "$.Crawler.LastCrawl.Status"
+              StringEquals = "SUCCEEDED"
+            }
+          ]
+          Next = "PipelineSucceeded"
         }]
         Default = "NotifyCrawlProcessedFailed"
       }

@@ -417,6 +417,17 @@ def write_dora_metrics(df: pd.DataFrame):
 
 
 def main():
+    import os
+    import sys
+    if "--SIMULATE_FAILURE" in sys.argv or os.environ.get("SIMULATE_FAILURE", "").lower() == "true":
+        for i, arg in enumerate(sys.argv):
+            if arg == "--SIMULATE_FAILURE" and i + 1 < len(sys.argv) and sys.argv[i + 1].lower() == "true":
+                print(json.dumps({"event": "simulated_glue_job_failure"}))
+                raise RuntimeError("Simulated Glue transform job failure for M5-3 verification")
+        if os.environ.get("SIMULATE_FAILURE", "").lower() == "true":
+            print(json.dumps({"event": "simulated_glue_job_failure"}))
+            raise RuntimeError("Simulated Glue transform job failure for M5-3 verification")
+
     results = {rt: transform_resource(rt) for rt in RESOURCE_CONFIG}
 
     dora_df = build_dora_metrics(
