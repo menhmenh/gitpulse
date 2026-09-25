@@ -124,14 +124,21 @@ resource "aws_iam_role_policy" "glue_processed_crawler_s3" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = ["s3:GetObject", "s3:ListBucket"]
-      Resource = [
-        aws_s3_bucket.this["processed"].arn,
-        "${aws_s3_bucket.this["processed"].arn}/*"
-      ]
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = aws_s3_bucket.this["processed"].arn
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject"]
+        Resource = [
+          for target in concat(local.github_resource_types, ["dora_metrics"]) :
+          "${aws_s3_bucket.this["processed"].arn}/${target}/*"
+        ]
+      }
+    ]
   })
 }
 

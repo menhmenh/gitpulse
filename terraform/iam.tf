@@ -122,9 +122,14 @@ resource "aws_iam_role_policy" "github_ingestion_lambda_s3" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["s3:PutObject", "s3:DeleteObject"] # DeleteObject needed for rollback on partial-write failure
-      Resource = "${aws_s3_bucket.this["raw"].arn}/raw/github/*"
+      Effect = "Allow"
+      Action = ["s3:PutObject", "s3:DeleteObject"] # DeleteObject needed for rollback on partial-write failure
+      # Explicitly scoped to the 8 ingested resource types (including deployments & workflow_runs)
+      # without over-scoping S3 write paths to arbitrary prefixes (PRD §12.2 / DoD 8.8).
+      Resource = [
+        for rt in local.github_resource_types :
+        "${aws_s3_bucket.this["raw"].arn}/raw/github/${rt}/*"
+      ]
     }]
   })
 }
@@ -170,7 +175,7 @@ resource "aws_iam_role_policy" "github_ingestion_lambda_secrets" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["secretsmanager:GetSecretValue"]
-      Resource = "arn:aws:secretsmanager:${local.region}:${local.account_id}:secret:${local.github_secret_prefix}-*"
+      Resource = aws_secretsmanager_secret.github_token.arn
     }]
   })
 }
@@ -218,14 +223,21 @@ resource "aws_iam_role_policy" "glue_crawler_s3" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = ["s3:GetObject", "s3:ListBucket"]
-      Resource = [
-        aws_s3_bucket.this["raw"].arn,
-        "${aws_s3_bucket.this["raw"].arn}/*"
-      ]
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = aws_s3_bucket.this["raw"].arn
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject"]
+        Resource = [
+          for rt in local.github_resource_types :
+          "${aws_s3_bucket.this["raw"].arn}/raw/github/${rt}/*"
+        ]
+      }
+    ]
   })
 }
 
@@ -299,7 +311,10 @@ resource "aws_iam_role_policy" "glue_job_logs" {
         "logs:CreateLogStream",
         "logs:PutLogEvents"
       ]
-      Resource = "arn:aws:logs:${local.region}:${local.account_id}:log-group:/aws-glue/python-jobs/*:*"
+      Resource = [
+        "arn:aws:logs:${local.region}:${local.account_id}:log-group:/aws-glue/python-jobs/output:*",
+        "arn:aws:logs:${local.region}:${local.account_id}:log-group:/aws-glue/python-jobs/error:*"
+      ]
     }]
   })
 }
@@ -313,13 +328,24 @@ resource "aws_iam_role_policy" "glue_job_s3" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:ListBucket"]
-        Resource = [aws_s3_bucket.this["raw"].arn, "${aws_s3_bucket.this["raw"].arn}/*"]
+        Action   = ["s3:ListBucket"]
+        Resource = [aws_s3_bucket.this["raw"].arn, aws_s3_bucket.this["processed"].arn]
       },
       {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
-        Resource = [aws_s3_bucket.this["processed"].arn, "${aws_s3_bucket.this["processed"].arn}/*"]
+        Effect = "Allow"
+        Action = ["s3:GetObject"]
+        Resource = concat(
+          ["${aws_s3_bucket.this["raw"].arn}/scripts/transform_and_dora.py"],
+          [for rt in local.github_resource_types : "${aws_s3_bucket.this["raw"].arn}/raw/github/${rt}/*"]
+        )
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject"]
+        Resource = [
+          for target in concat(local.github_resource_types, ["dora_metrics"]) :
+          "${aws_s3_bucket.this["processed"].arn}/${target}/*"
+        ]
       }
     ]
   })

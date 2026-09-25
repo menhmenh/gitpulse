@@ -69,6 +69,11 @@ def get_github_token() -> str:
     if _token_cache is None:
         resp = _sm.get_secret_value(SecretId=SECRET_ARN)
         _token_cache = json.loads(resp["SecretString"])["token"]
+        print(json.dumps({
+            "event": "github_token_loaded",
+            "source": "secretsmanager",
+            "secret_arn": SECRET_ARN,
+        }))
     return _token_cache
 
 

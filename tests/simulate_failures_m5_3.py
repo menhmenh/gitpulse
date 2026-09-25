@@ -92,7 +92,7 @@ class TestM53FailureSimulationLocal(unittest.TestCase):
         mock_s3.delete_object.side_effect = fake_delete_object
 
         mock_sm = MagicMock()
-        mock_sm.get_secret_value.return_value = {"SecretString": json.dumps({"token": "ghp_test_token"})}
+        mock_sm.get_secret_value.return_value = {"SecretString": json.dumps({"token": "mock_secret_manager_token"})}
 
         ingestion_handler._s3 = mock_s3
         ingestion_handler._sm = mock_sm

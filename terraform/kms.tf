@@ -19,7 +19,7 @@ resource "aws_kms_key" "data_lake" {
         Principal = { Service = "cloudwatch.amazonaws.com" }
         Action = [
           "kms:Decrypt",
-          "kms:GenerateDataKey*"
+          "kms:GenerateDataKey"
         ]
         Resource = "*"
       }
