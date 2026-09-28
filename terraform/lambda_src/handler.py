@@ -4,7 +4,8 @@ import re
 import time
 import urllib.request
 import urllib.error
-from datetime import datetime
+from urllib.parse import urlencode
+from datetime import datetime, timedelta, timezone
 
 import boto3
 
@@ -122,14 +123,58 @@ def call_github(url: str, token: str, retries: int = 3):
             raise RuntimeError(f"Network error calling {url}: {e}")
 
 
-def fetch_pages(repo: str, resource_type: str, since: str, token: str):
+def fetch_workflow_pages(repo: str, since: str, until: str, token: str):
+    """Bound Actions searches to the original batch and split GitHub's 1,000-result cap."""
+    since_dt = datetime.fromisoformat(since.replace("Z", "+00:00")).astimezone(timezone.utc)
+    until_dt = datetime.fromisoformat(until.replace("Z", "+00:00")).astimezone(timezone.utc)
+    if since_dt > until_dt:
+        raise ValueError("Workflow run window starts after its end")
+
+    def fetch_window(start, end):
+        created = f"{start.strftime('%Y-%m-%dT%H:%M:%SZ')}..{end.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+        url = f"{GITHUB_API}/repos/{repo}/actions/runs?{urlencode({'per_page': 100, 'created': created})}"
+        pages = []
+        while url:
+            started = time.monotonic()
+            print(json.dumps({"event": "github_page_start", "repo": repo,
+                              "resource_type": "workflow_runs", "url": url}))
+            data, link_header = call_github(url, token)
+            print(json.dumps({"event": "github_page_complete", "repo": repo,
+                              "resource_type": "workflow_runs", "url": url,
+                              "elapsed_seconds": round(time.monotonic() - started, 3),
+                              "record_count": len(data["workflow_runs"])}))
+            if data["total_count"] > 1000:
+                seconds = int((end - start).total_seconds())
+                if seconds == 0:
+                    raise RuntimeError(f"More than 1,000 workflow runs in one second for {repo}: {created}")
+                midpoint = start + timedelta(seconds=seconds // 2)
+                return fetch_window(start, midpoint) + fetch_window(midpoint + timedelta(seconds=1), end)
+
+            page = dict(data)
+            # API timestamps have second precision; retain the exact since boundary.
+            # Filter every item, without relying on the API's ordering.
+            page["workflow_runs"] = [
+                item for item in data["workflow_runs"]
+                if since_dt <= datetime.fromisoformat(item["created_at"].replace("Z", "+00:00")) <= until_dt
+            ]
+            pages.append(page)
+            url = parse_link_header(link_header).get("next")
+        return pages
+
+    return fetch_window(since_dt.replace(microsecond=0), until_dt.replace(microsecond=0))
+
+
+def fetch_pages(repo: str, resource_type: str, since: str, token: str, until: str = None):
     """FR-6: handles pagination itself. FR-7: incremental via server-side
     `since` where the API supports it, or client-side filtering + early
     pagination exit (newest-first) where it doesn't."""
+    if resource_type == "workflow_runs" and since:
+        return fetch_workflow_pages(repo, since, until or datetime.now(timezone.utc).isoformat(), token)
+
     config = RESOURCE_CONFIG[resource_type]
     url = f"{GITHUB_API}{config['path'].format(repo=repo)}?per_page=100{config['sort_param']}"
     if config["since_server"]:
-        url += f"&since={since}"
+        url += f"&{urlencode({'since': since})}"
 
     since_dt = None
     if since and config["client_filter_field"]:
@@ -241,7 +286,12 @@ def handler(event, context):
 
         # FR-9: validate responses before writing. If anything below throws,
         # NO partial data is written and the Lambda exception lets SQS retry.
-        pages = fetch_pages(repo, resource_type, since, token)
+        if resource_type == "workflow_runs" and since:
+            # Redriving an old job must not expand its window up to today's date.
+            until = datetime.strptime(run_ts[:16], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc).isoformat()
+            pages = fetch_pages(repo, resource_type, since, token, until=until)
+        else:
+            pages = fetch_pages(repo, resource_type, since, token)
         page_count = write_raw_pages(repo, resource_type, pages, run_ts)
         record_count = sum(len(get_items(p, RESOURCE_CONFIG[resource_type])) for p in pages)
 

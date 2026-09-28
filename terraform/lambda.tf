@@ -1,3 +1,7 @@
+locals {
+  ingestion_timeout_seconds = 180
+}
+
 data "archive_file" "producer" {
   type        = "zip"
   source_dir  = "${path.module}/producer_src"
@@ -37,8 +41,11 @@ resource "aws_lambda_function" "github_ingestion" {
   role          = aws_iam_role.github_ingestion_lambda.arn
   handler       = "handler.handler"
   runtime       = "python3.13"
-  timeout       = 60 # seconds — SQS visibility timeout must exceed this (see sqs.tf)
+  timeout       = local.ingestion_timeout_seconds
   memory_size   = 256
+
+  # Increase queue visibility before increasing Lambda timeout on existing deployments.
+  depends_on = [aws_sqs_queue.job_queue]
 
   filename         = data.archive_file.github_ingestion.output_path
   source_code_hash = data.archive_file.github_ingestion.output_base64sha256

@@ -25,7 +25,8 @@ resource "aws_sqs_queue_redrive_allow_policy" "dlq" {
 resource "aws_sqs_queue" "job_queue" {
   name = local.job_queue_name
 
-  visibility_timeout_seconds = 90
+  # AWS recommends at least six times the Lambda timeout for retry/throttling headroom.
+  visibility_timeout_seconds = local.ingestion_timeout_seconds * 6
 
   message_retention_seconds = 345600 # 4 days
 

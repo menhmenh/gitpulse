@@ -401,7 +401,7 @@ aws sqs send-message \
   --queue-url "${QUEUE_URL}" \
   --message-body '{"repo":"vercel/next.js","resource_type":"repository","since":"2026-09-24T00:00:00Z","run_ts":"20260925T999999Z_manual_fail","simulate_failure":"partial_write_rollback"}'
 
-# After 3 retries (~4.5 minutes with default 90s VisibilityTimeout), verify message landed in DLQ:
+# Allow roughly 54 minutes for 3 receives with the default 1080s VisibilityTimeout:
 aws sqs get-queue-attributes \
   --profile gitpulse \
   --region ap-southeast-1 \
@@ -410,6 +410,29 @@ aws sqs get-queue-attributes \
 ```
 
 ---
+
+### Workflow Runs Timeout Recovery
+
+Workflow ingestion filters GitHub Actions requests with `created=since..run_ts`.
+The end of the window comes from the original Producer batch, so redriving an old
+DLQ message does not fetch all newer runs. Searches exceeding GitHub's 1,000-result
+limit are split into smaller time windows before pagination. Each API page logs
+`github_page_start` and `github_page_complete` with its duration.
+
+The ingestion Lambda timeout is 180 seconds; the job queue visibility timeout is
+six times that value (1080 seconds). Terraform updates queue visibility before
+increasing the Lambda timeout.
+
+Run the offline regression tests before deploying:
+
+```bash
+python -m unittest discover -s tests -p test_workflow_ingestion.py -v
+terraform -chdir=terraform validate
+```
+
+Deploy with the Terraform plan/apply workflow described above. Then retry one
+failed workflow job and verify `ingestion_complete` in CloudWatch before starting
+a DLQ redrive. Do not purge the DLQ to recover data.
 
 ## 9. Security & IAM Audit Verification
 
