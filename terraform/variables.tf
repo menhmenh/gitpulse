@@ -65,12 +65,6 @@ variable "dora_prod_environments" {
   default     = ["production", "prod", "release-canary"]
 }
 
-variable "athena_bytes_scanned_cutoff_per_query" {
-  description = "Max bytes a single Athena query can scan before being cancelled — cost-control guardrail against unoptimized/unpartitioned queries"
-  type        = number
-  default     = 10737418240 # 10 GB
-}
-
 variable "sqs_drained_sustained_minutes" {
   description = "Number of sustained minutes SQS queue messages (visible + not visible) must remain 0 before alarm transitions to OK (PRD FR-33, Architecture §12.3)"
   type        = number

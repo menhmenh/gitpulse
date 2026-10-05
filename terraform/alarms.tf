@@ -218,4 +218,3 @@ resource "aws_cloudwatch_metric_alarm" "sqs_drained" {
 
   tags = { Name = "GitPulse Job Queue Drained" }
 }
-

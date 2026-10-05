@@ -1,10 +1,10 @@
 output "s3_bucket_names" {
-  description = "GitPulse S3 bucket names by zone (raw, processed, athena_results)"
+  description = "GitPulse S3 bucket names by zone (raw, processed)"
   value       = { for k, b in aws_s3_bucket.this : k => b.bucket }
 }
 
 output "s3_bucket_arns" {
-  description = "GitPulse S3 bucket ARNs by zone (raw, processed, athena_results)"
+  description = "GitPulse S3 bucket ARNs by zone (raw, processed)"
   value       = { for k, b in aws_s3_bucket.this : k => b.arn }
 }
 
@@ -31,16 +31,6 @@ output "glue_job_role_arn" {
 output "eventbridge_scheduler_role_arn" {
   description = "IAM role ARN for EventBridge Scheduler"
   value       = aws_iam_role.eventbridge_scheduler.arn
-}
-
-output "athena_analyst_role_arn" {
-  description = "IAM role ARN for Athena analyst access"
-  value       = aws_iam_role.athena_analyst.arn
-}
-
-output "athena_workgroup_name" {
-  description = "Athena workgroup name for GitPulse queries"
-  value       = aws_athena_workgroup.gitpulse.name
 }
 
 output "eventbridge_sfn_role_arn" {

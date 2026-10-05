@@ -21,9 +21,7 @@ resource "aws_scheduler_schedule" "producer" {
   }
 }
 
-############################################
 # Primary: SQS Drained Trigger for Transform Tail (PRD FR-33, Architecture §12.3)
-############################################
 
 resource "aws_cloudwatch_event_rule" "sqs_drained_to_sfn" {
   name        = "${var.project_name}-sqs-drained-to-sfn"
@@ -50,9 +48,7 @@ resource "aws_cloudwatch_event_target" "sqs_drained_to_sfn" {
   role_arn  = aws_iam_role.eventbridge_sfn.arn
 }
 
-############################################
 # Fallback: Time-delayed Trigger for Transform Tail (producer_time + 45min, variable-gated)
-############################################
 
 resource "aws_cloudwatch_event_rule" "time_delay_to_sfn" {
   name                = "${var.project_name}-time-delay-to-sfn"

@@ -6,9 +6,6 @@ locals {
     processed = {
       name = "gitpulse-processed-${var.environment}-${data.aws_caller_identity.current.account_id}"
     }
-    athena_results = {
-      name = "gitpulse-athena-results-${var.environment}-${data.aws_caller_identity.current.account_id}"
-    }
   }
 }
 
