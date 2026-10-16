@@ -1,0 +1,30 @@
+name: 'gitpulse'
+version: '1.0.0'
+config-version: 2
+
+profile: 'gitpulse'
+
+model-paths: ["models"]
+snapshot-paths: ["snapshots"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  gitpulse:
+    staging:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts
+
+vars:
+  # Reporting window used by dim_date and the rolling-activity marts.
+  # Kept as a var (not hardcoded) so backfills can widen it without editing SQL.
+  date_spine_start: '2024-01-01'
+  date_spine_end: '2027-12-31'

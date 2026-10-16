@@ -1,0 +1,25 @@
+version: 2
+
+sources:
+  - name: gitpulse_processed
+    database: GITPULSE_DB
+    schema: PROCESSED
+    description: >
+      External tables over the S3 processed Parquet zone, written by the
+      Glue Python Shell transform job. dbt does not write to these — they
+      are refreshed by Snowpipe/S3 notifications (see snowflake_integration.tf),
+      independent of any dbt run.
+    tables:
+      - name: repository
+        loaded_at_field: updated_at
+      - name: commits
+      - name: issues
+        loaded_at_field: updated_at
+      - name: pull_requests
+        loaded_at_field: updated_at
+      - name: releases
+      - name: contributors
+      - name: deployments
+      - name: workflow_runs
+        loaded_at_field: updated_at
+      - name: dora_metrics
