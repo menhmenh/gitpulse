@@ -1,0 +1,20 @@
+{
+  "created_at": "2026-11-17T03:28:50.569272+00:00",
+  "manifest_version": "1.0",
+  "page_count": 1,
+  "pages": [
+    {
+      "checksum_sha256": "ca0fd3dc87079cd88bacb519604cc72fe1f96b8be83902ad4f77f7e0ad8e83fd",
+      "filename": "page_0.json",
+      "page_index": 0,
+      "record_count": 4,
+      "s3_key": "raw/github/workflow_runs/apache_spark/run_ts=20261002T120000Z/page_0.json"
+    }
+  ],
+  "repo": "apache/spark",
+  "resource_type": "workflow_runs",
+  "run_ts": "20261002T120000Z",
+  "since": "2026-10-01T15:00:00Z",
+  "total_records": 4,
+  "until": "2026-10-02T12:00:00Z"
+}

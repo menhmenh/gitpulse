@@ -109,6 +109,50 @@ class WorkflowIngestionTests(unittest.TestCase):
             self.handler.fetch_pages("vercel/next.js", "commits", since, "test-token")
         self.assertEqual(parse_qs(urlparse(api.call_args.args[0]).query)["since"], [since])
 
+    def test_ingestion_with_write_manifest_writes_both_page_and_valid_manifest(self):
+        payload = {
+            "repo": "vercel/next.js",
+            "resource_type": "workflow_runs",
+            "since": self.since,
+            "until": self.until,
+            "run_ts": "20260918T000041Z",
+            "write_manifest": True,
+        }
+        response = {"total_count": 1, "workflow_runs": [self.run_item(10, "2026-09-17T01:00:00Z")]}
+        with patch.object(self.handler, "call_github", return_value=(response, "")):
+            res = self.handler.handler({"Records": [{"body": json.dumps(payload)}]}, None)
+        self.assertEqual(res, {"status": "ok"})
+
+        calls = self.handler._s3.put_object.call_args_list
+        self.assertEqual(len(calls), 2)
+        # Call 1: page_0.json
+        self.assertIn("page_0.json", calls[0].kwargs["Key"])
+        # Call 2: manifest.json
+        manifest_call = calls[1].kwargs
+        self.assertIn("manifest.json", manifest_call["Key"])
+        manifest = json.loads(manifest_call["Body"])
+        self.assertEqual(manifest["total_records"], 1)
+        self.assertEqual(manifest["repo"], "vercel/next.js")
+        self.assertEqual(manifest["resource_type"], "workflow_runs")
+        self.assertEqual(len(manifest["pages"]), 1)
+        self.assertEqual(manifest["pages"][0]["filename"], "page_0.json")
+
+    def test_ingestion_with_explicit_until_window_uses_exact_until(self):
+        explicit_until = "2026-09-17T12:00:00Z"
+        payload = {
+            "repo": "vercel/next.js",
+            "resource_type": "workflow_runs",
+            "since": "2026-09-17T00:00:00Z",
+            "until": explicit_until,
+            "run_ts": "20260918T000041Z",
+        }
+        response = {"total_count": 0, "workflow_runs": []}
+        with patch.object(self.handler, "call_github", return_value=(response, "")) as api:
+            self.handler.handler({"Records": [{"body": json.dumps(payload)}]}, None)
+        url = api.call_args.args[0]
+        query = parse_qs(urlparse(url).query)
+        self.assertEqual(query["created"], ["2026-09-17T00:00:00Z..2026-09-17T12:00:00Z"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,9 +16,9 @@ try:
 except Exception:
     import os
     args = {
-        "RAW_BUCKET": os.environ["RAW_BUCKET"],
-        "PROCESSED_BUCKET": os.environ["PROCESSED_BUCKET"],
-        "REPOS": os.environ["REPOS"],
+        "RAW_BUCKET": os.environ.get("RAW_BUCKET", "mock-raw-bucket"),
+        "PROCESSED_BUCKET": os.environ.get("PROCESSED_BUCKET", "mock-processed-bucket"),
+        "REPOS": os.environ.get("REPOS", ""),
         "DORA_FAILURE_LABELS": os.environ.get("DORA_FAILURE_LABELS", "bug,incident,hotfix"),
         "DORA_REVERT_PREFIXES": os.environ.get("DORA_REVERT_PREFIXES", "revert,hotfix:"),
         "DORA_PROD_ENVIRONMENTS": os.environ.get("DORA_PROD_ENVIRONMENTS", "production,prod"),
@@ -136,27 +136,49 @@ def cast_types(df: pd.DataFrame, resource_type: str) -> pd.DataFrame:
     return df
 
 
+def _extract_run_date(run_ts_val) -> str:
+    """Extract YYYY-MM-DD from run_ts string (e.g. '20260918T000041Z' -> '2026-09-18').
+    Falls back to current UTC date if run_ts is missing or cannot be parsed."""
+    if isinstance(run_ts_val, str) and len(run_ts_val) >= 8 and run_ts_val[:8].isdigit():
+        return f"{run_ts_val[:4]}-{run_ts_val[4:6]}-{run_ts_val[6:8]}"
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
 def dedupe(df: pd.DataFrame, resource_type: str) -> pd.DataFrame:
-    """FR-13: dedup by sha/id, keeping the most recently ingested version."""
+    """FR-13: dedup by (repo, sha/id), keeping the most recently ingested version.
+    Preserves records with identical IDs across different repositories (e.g. contributor ID or commit SHA)."""
     config = RESOURCE_CONFIG[resource_type]
     id_col = config["id_field"]
     if id_col not in df.columns:
         return df
+    
+    subset = [id_col]
+    if "_repo" in df.columns:
+        subset.insert(0, "_repo")
+    elif "repo" in df.columns:
+        subset.insert(0, "repo")
+
     df = df.sort_values("_run_ts", ascending=False)
-    return df.drop_duplicates(subset=[id_col], keep="first")
+    return df.drop_duplicates(subset=subset, keep="first")
 
 
 def partition_date(df: pd.DataFrame, resource_type: str) -> pd.DataFrame:
-    """FR-14: partition by the record's own business date; contributors has
-    none (documented limitation, see ingestion ticket) -> falls back to
-    today's run date."""
+    """FR-14: partition by the record's own business date; if missing/unparseable,
+    or for resources without a business date (e.g. contributors), fall back to
+    the ingestion date (_run_ts) so replays remain deterministic across execution dates."""
     config = RESOURCE_CONFIG[resource_type]
     date_field = config["date_field"]
+
+    if "_run_ts" in df.columns:
+        fallback_dt = df["_run_ts"].apply(_extract_run_date)
+    else:
+        fallback_dt = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
     if date_field and date_field in df.columns:
         df["dt"] = to_date_str(pd.to_datetime(df[date_field], errors="coerce", utc=True))
-        df["dt"] = df["dt"].fillna(datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+        df["dt"] = df["dt"].fillna(fallback_dt)
     else:
-        df["dt"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        df["dt"] = fallback_dt
     return df
 
 
@@ -198,7 +220,11 @@ def transform_resource(resource_type: str) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# FR-29/FR-31: dora_metrics derived table (PRD §11.1/§11.3, Architecture §11.2/§11.3)
+# FR-29/FR-31: dora_metrics derived table (DORA Proxy Metrics)
+# NOTE: In the absence of native incident-to-deployment trace linking in the GitHub
+# REST API, Lead Time, Change Failure Rate, and MTTR are calculated using heuristic
+# proxies (label keywords, revert PR prefixes, nearest prior PR merge). They represent
+# engineering proxy estimates rather than audited continuous deployment telemetry.
 # Output columns: dt, repo, environment, deploy_count, lead_time_p50,
 # lead_time_p95, change_failure_rate, mttr_minutes
 # ---------------------------------------------------------------------------

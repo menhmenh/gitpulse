@@ -24,9 +24,9 @@ NFR-5, DoD §8.7 & §8.8, Architecture §6 & §12.6):
      structured CloudWatch audit log `{"event": "github_token_loaded", "source": "secretsmanager"}`
      without leaking the secret value.
 
-4. Athena results bucket (`athena_results`) is encrypted with KMS:
-   - Verified at both S3 bucket level (`aws:kms` with `aws_kms_key.data_lake.arn`) and
-     Athena Workgroup level (`SSE_KMS` with `enforce_workgroup_configuration = true`).
+4. S3 data lake buckets (`raw`, `processed`) are encrypted with KMS and Snowflake role is least-privilege:
+   - Verified at S3 bucket level (`aws:kms` with `aws_kms_key.data_lake.arn`).
+   - Verified at Snowflake storage integration IAM role level (scoped to processed bucket with `kms:Decrypt`).
 """
 
 import io
@@ -152,17 +152,20 @@ class TestM54SecurityAudit(unittest.TestCase):
         self.assertEqual(log_record["secret_arn"], os.environ["GITHUB_SECRET_ARN"])
         self.assertNotIn(secret_val, log_output, "Secret token value must NEVER appear in logs")
 
-    def test_6_athena_results_bucket_encrypted_with_kms(self):
-        """AC 4: The Athena results bucket is encrypted with KMS at both S3 bucket and Athena workgroup levels."""
+    def test_6_s3_buckets_encrypted_and_snowflake_integration_least_privilege(self):
+        """AC 4: S3 data lake buckets are encrypted with KMS and Snowflake integration role is least-privilege."""
         s3_tf = (TERRAFORM_DIR / "s3.tf").read_text(encoding="utf-8")
-        athena_tf = (TERRAFORM_DIR / "athena.tf").read_text(encoding="utf-8")
+        snowflake_tf = (TERRAFORM_DIR / "snowflake_integration.tf").read_text(encoding="utf-8")
 
-        self.assertIn("athena_results", s3_tf)
+        # Verify S3 KMS encryption configuration
         self.assertIn('sse_algorithm     = "aws:kms"', s3_tf)
         self.assertIn("kms_master_key_id = aws_kms_key.data_lake.arn", s3_tf)
-        self.assertIn('encryption_option = "SSE_KMS"', athena_tf)
-        self.assertIn("kms_key_arn       = aws_kms_key.data_lake.arn", athena_tf)
-        self.assertIn("enforce_workgroup_configuration    = true", athena_tf)
+
+        # Verify Snowflake storage integration least-privilege policies
+        self.assertIn("aws_iam_role.snowflake_storage_integration", snowflake_tf)
+        self.assertIn('"s3:GetObject"', snowflake_tf)
+        self.assertIn('"kms:Decrypt"', snowflake_tf)
+        self.assertIn("Resource = aws_kms_key.data_lake.arn", snowflake_tf)
 
 
 if __name__ == "__main__":

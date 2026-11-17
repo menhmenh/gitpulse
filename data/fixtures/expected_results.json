@@ -1,0 +1,22 @@
+{
+  "batch_1": {
+    "spark_records": 3,
+    "iceberg_records": 2,
+    "total_unique_records": 5,
+    "spark_run_102_status": "in_progress",
+    "iceberg_has_run_101": true,
+    "spark_has_run_101": true
+  },
+  "batch_2": {
+    "spark_records": 5,
+    "iceberg_records": 3,
+    "total_unique_records": 8,
+    "spark_run_102_status": "completed",
+    "spark_run_99_partition_dt": "2026-09-30",
+    "spark_run_104_partition_dt": "2026-10-02"
+  },
+  "batch_3_replay": {
+    "total_unique_records": 8,
+    "spark_run_102_status": "completed"
+  }
+}

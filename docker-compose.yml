@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  gitpulse-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gitpulse-iceberg-demo
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data/warehouse:/workspace/data/warehouse
+    command: ["bash", "scripts/run_demo.sh"]
+
+  gitpulse-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gitpulse-unit-tests
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["python", "-m", "unittest", "discover", "tests"]

@@ -1,0 +1,18 @@
+{
+  "batch_name": "batch_3_replay",
+  "run_ts": "20261002T120000Z",
+  "repos": [
+    {
+      "repo": "apache/spark",
+      "manifest_path": "batch_3_replay/apache_spark/run_ts=20261002T120000Z/manifest.json",
+      "run_dir": "batch_3_replay/apache_spark/run_ts=20261002T120000Z",
+      "record_count": 4
+    },
+    {
+      "repo": "apache/iceberg",
+      "manifest_path": "batch_3_replay/apache_iceberg/run_ts=20261002T120000Z/manifest.json",
+      "run_dir": "batch_3_replay/apache_iceberg/run_ts=20261002T120000Z",
+      "record_count": 1
+    }
+  ]
+}

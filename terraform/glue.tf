@@ -182,3 +182,37 @@ resource "aws_glue_crawler" "processed" {
 
   tags = { Name = "GitPulse Processed Crawler" }
 }
+
+# Optional AWS Glue 5.0 PySpark Apache Iceberg pipeline job
+resource "aws_glue_job" "iceberg_workflow_runs" {
+  count        = var.enable_iceberg_spark_job ? 1 : 0
+  name         = "${var.project_name}-iceberg-workflow-runs"
+  role_arn     = aws_iam_role.glue_job.arn
+  glue_version = "5.0"
+
+  command {
+    name            = "glueetl"
+    script_location = "s3://${aws_s3_bucket.this["raw"].id}/scripts/iceberg_workflow_runs.py"
+    python_version  = "3"
+  }
+
+  default_arguments = {
+    "--datalake-formats"        = "iceberg"
+    "--enable-glue-datacatalog" = "true"
+    "--job-language"            = "python"
+    "--job-bookmark-option"     = "job-bookmark-disable"
+    "--TempDir"                 = "s3://${aws_s3_bucket.this["raw"].id}/glue_temp/"
+    "--warehouse"               = "s3://${aws_s3_bucket.this["processed"].id}/iceberg_warehouse/"
+    "--RAW_BUCKET"              = aws_s3_bucket.this["raw"].id
+    "--PROCESSED_BUCKET"        = aws_s3_bucket.this["processed"].id
+  }
+
+  number_of_workers = 2
+  worker_type       = "G.1X"
+  timeout           = 30
+
+  tags = {
+    Name    = "GitPulse Iceberg Spark Job"
+    Project = "gitpulse"
+  }
+}

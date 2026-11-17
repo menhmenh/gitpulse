@@ -1,0 +1,21 @@
+{
+  "manifest_version": "1.0",
+  "repo": "apache/spark",
+  "resource_type": "workflow_runs",
+  "run_ts": "20261001T000000Z",
+  "total_records": 10,
+  "pages": [
+    {
+      "page_index": 0,
+      "filename": "page_0.json",
+      "record_count": 5,
+      "checksum_sha256": "71f074cfa8e70b363e8425487c0197efb350ad1b1032a2e3436e8ebb91292d6f"
+    },
+    {
+      "page_index": 1,
+      "filename": "page_1.json",
+      "record_count": 5,
+      "checksum_sha256": "fake"
+    }
+  ]
+}

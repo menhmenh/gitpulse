@@ -1,0 +1,18 @@
+{
+  "batch_name": "batch_1",
+  "run_ts": "20261001T150000Z",
+  "repos": [
+    {
+      "repo": "apache/spark",
+      "manifest_path": "batch_1/apache_spark/run_ts=20261001T150000Z/manifest.json",
+      "run_dir": "batch_1/apache_spark/run_ts=20261001T150000Z",
+      "record_count": 3
+    },
+    {
+      "repo": "apache/iceberg",
+      "manifest_path": "batch_1/apache_iceberg/run_ts=20261001T150000Z/manifest.json",
+      "run_dir": "batch_1/apache_iceberg/run_ts=20261001T150000Z",
+      "record_count": 2
+    }
+  ]
+}

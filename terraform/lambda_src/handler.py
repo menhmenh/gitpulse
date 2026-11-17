@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -213,22 +214,71 @@ def fetch_pages(repo: str, resource_type: str, since: str, token: str, until: st
     return pages
 
 
-def write_raw_pages(repo: str, resource_type: str, pages: list, run_ts: str, simulate_mid_write_failure: bool = False):
+def write_raw_pages(
+    repo: str,
+    resource_type: str,
+    pages: list,
+    run_ts: str,
+    simulate_mid_write_failure: bool = False,
+    since: str = "",
+    until: str = "",
+    write_manifest: bool = False,
+):
     safe_repo = repo.replace("/", "_")
     prefix = f"raw/github/{resource_type}/{safe_repo}/run_ts={run_ts}/"
     written_keys = []
+    page_metadata = []
+    total_records = 0
+    config = RESOURCE_CONFIG[resource_type]
+
     try:
         for i, page in enumerate(pages):
             key = f"{prefix}page_{i}.json"
+            body_bytes = json.dumps(page).encode("utf-8")
+            checksum = hashlib.sha256(body_bytes).hexdigest()
+            items = get_items(page, config)
+            page_rec_count = len(items)
+            total_records += page_rec_count
+
             _s3.put_object(
                 Bucket=RAW_BUCKET,
                 Key=key,
-                Body=json.dumps(page).encode("utf-8"),
+                Body=body_bytes,
                 ContentType="application/json",
             )
             written_keys.append(key)
+            page_metadata.append({
+                "page_index": i,
+                "s3_key": key,
+                "filename": f"page_{i}.json",
+                "record_count": page_rec_count,
+                "checksum_sha256": checksum,
+            })
             if simulate_mid_write_failure:
                 raise RuntimeError(f"Simulated mid-write failure after writing {key} (testing atomic rollback)")
+
+        if write_manifest:
+            manifest = {
+                "manifest_version": "1.0",
+                "repo": repo,
+                "resource_type": resource_type,
+                "run_ts": run_ts,
+                "since": since,
+                "until": until,
+                "total_records": total_records,
+                "page_count": len(pages),
+                "pages": page_metadata,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            manifest_key = f"{prefix}manifest.json"
+            _s3.put_object(
+                Bucket=RAW_BUCKET,
+                Key=manifest_key,
+                Body=json.dumps(manifest, indent=2).encode("utf-8"),
+                ContentType="application/json",
+            )
+            written_keys.append(manifest_key)
+
     except Exception:
         for key in written_keys:
             try:
@@ -242,7 +292,7 @@ def write_raw_pages(repo: str, resource_type: str, pages: list, run_ts: str, sim
                     "error": str(cleanup_err),
                 }))
         raise
-    return len(written_keys)
+    return len([k for k in written_keys if not k.endswith("manifest.json")])
 
 
 def handler(event, context):
@@ -258,6 +308,8 @@ def handler(event, context):
         # what makes a retried message overwrite the same S3 key (FR-11)
         # instead of drifting to a new run_ts on every retry attempt.
         run_ts = body["run_ts"]
+        until = body.get("until")
+        write_manifest = body.get("write_manifest", False)
         simulate_failure = body.get("simulate_failure", False)
 
         if resource_type not in RESOURCE_CONFIG:
@@ -269,8 +321,10 @@ def handler(event, context):
             "repo": repo,
             "resource_type": resource_type,
             "since": since,
+            "until": until,
             "run_ts": run_ts,
             "simulate_failure": simulate_failure,
+            "write_manifest": write_manifest,
         }))
 
         if simulate_failure == "partial_write_rollback":
@@ -287,12 +341,21 @@ def handler(event, context):
         # FR-9: validate responses before writing. If anything below throws,
         # NO partial data is written and the Lambda exception lets SQS retry.
         if resource_type == "workflow_runs" and since:
-            # Redriving an old job must not expand its window up to today's date.
-            until = datetime.strptime(run_ts[:16], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc).isoformat()
-            pages = fetch_pages(repo, resource_type, since, token, until=until)
+            # If until was not specified, use run_ts to keep window deterministic
+            effective_until = until or datetime.strptime(run_ts[:16], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc).isoformat()
+            pages = fetch_pages(repo, resource_type, since, token, until=effective_until)
         else:
-            pages = fetch_pages(repo, resource_type, since, token)
-        page_count = write_raw_pages(repo, resource_type, pages, run_ts)
+            pages = fetch_pages(repo, resource_type, since, token, until=until)
+
+        page_count = write_raw_pages(
+            repo,
+            resource_type,
+            pages,
+            run_ts,
+            since=since,
+            until=until or "",
+            write_manifest=write_manifest,
+        )
         record_count = sum(len(get_items(p, RESOURCE_CONFIG[resource_type])) for p in pages)
 
         print(json.dumps({
@@ -302,6 +365,7 @@ def handler(event, context):
             "pages_written": page_count,
             "record_count": record_count,  # compare across runs to verify incremental delta
             "run_ts": run_ts,
+            "manifest_written": write_manifest,
         }))
 
     return {"status": "ok"}

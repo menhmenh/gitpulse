@@ -89,4 +89,11 @@ variable "alert_email" {
   default     = "alerts@example.com"
 }
 
+variable "enable_iceberg_spark_job" {
+  description = "Optional Glue 5.0 PySpark Apache Iceberg pipeline job for cloud verification. Default is false to avoid unneeded cloud cost."
+  type        = bool
+  default     = false
+}
+
+
 

@@ -1,0 +1,41 @@
+{
+  "total_count": 3,
+  "workflow_runs": [
+    {
+      "conclusion": "success",
+      "created_at": "2026-10-01T10:00:00Z",
+      "event": "push",
+      "head_branch": "main",
+      "id": 101,
+      "name": "CI Build",
+      "run_attempt": 1,
+      "status": "completed",
+      "updated_at": "2026-10-01T10:15:00Z",
+      "workflow_id": 1
+    },
+    {
+      "conclusion": null,
+      "created_at": "2026-10-01T11:00:00Z",
+      "event": "push",
+      "head_branch": "main",
+      "id": 102,
+      "name": "Integration Tests",
+      "run_attempt": 1,
+      "status": "in_progress",
+      "updated_at": "2026-10-01T11:05:00Z",
+      "workflow_id": 2
+    },
+    {
+      "conclusion": "failure",
+      "created_at": "2026-10-01T12:00:00Z",
+      "event": "push",
+      "head_branch": "main",
+      "id": 103,
+      "name": "Lint",
+      "run_attempt": 1,
+      "status": "completed",
+      "updated_at": "2026-10-01T12:10:00Z",
+      "workflow_id": 3
+    }
+  ]
+}
